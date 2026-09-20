@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "StudyHub",
+    "slug": "studyhub",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "scheme": "studyhub",
+    "android": {
+      "package": "com.studyhub.app",
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#F6F4EF"
+      }
+    },
+    "plugins": [
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        {
+          "color": "#D66A3B"
+        }
+      ],
+      "expo-secure-store",
+      "expo-document-picker",
+      "expo-image-picker",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow StudyHub to check when you reach campus for reminders."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow StudyHub to turn your speech into notes and tasks.",
+          "speechRecognitionPermission": "Allow StudyHub to recognize your speech."
+        }
+      ],
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "75744a2f-2406-4ecc-93bd-a427d9d5a431"
+      }
+    }
+  }
+}
