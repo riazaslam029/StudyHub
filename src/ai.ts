@@ -8,10 +8,116 @@ export type AIResult<T = string> = { data: T; provider: AIProvider };
 const GEMINI_KEY = 'studyhub_gemini_api_key';
 const GROQ_KEY = 'studyhub_groq_api_key';
 
-// Standard official model names
-const PRIMARY_GEMINI_MODEL = 'gemini-2.0-flash';
-const FALLBACK_GEMINI_MODEL = 'gemini-1.5-flash';
+// Model configuration and candidate lists
+const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
+const GEMINI_CANDIDATES = [
+  'gemini-3.8-flash',
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-1.5-pro',
+];
+
+const DEFAULT_GROQ_MODEL = 'llama-3.1-8b-instant';
+const GROQ_CANDIDATES = [
+  'llama-3.1-8b-instant',
+  'llama-3.2-3b-preview',
+  'llama-3.2-1b-preview',
+  'llama-3.3-70b-versatile',
+  'llama3-8b-8192',
+  'llama3-70b-8192',
+  'mixtral-8x7b-32768',
+  'gemma2-9b-it',
+];
+
 const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODELS_ENDPOINT = 'https://api.groq.com/openai/v1/models';
+
+let cachedGeminiModel: string | null = null;
+let cachedGroqModel: string | null = null;
+
+export async function discoverGeminiModel(key: string): Promise<string> {
+  if (cachedGeminiModel) return cachedGeminiModel;
+  try {
+    const res = await timedFetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`,
+      { method: 'GET' },
+      'gemini',
+      10000
+    );
+    if (res.ok) {
+      const data = (await res.json()) as { models?: { name: string; supportedGenerationMethods?: string[] }[] };
+      const available = (data.models || [])
+        .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
+        .map((m) => m.name.replace(/^models\//, ''));
+
+      console.log(`[Gemini] Discovered ${available.length} models for key`);
+
+      // Match against prioritized candidate list
+      for (const cand of GEMINI_CANDIDATES) {
+        if (available.includes(cand)) {
+          console.log(`[Gemini] Selected model: ${cand}`);
+          cachedGeminiModel = cand;
+          return cand;
+        }
+      }
+
+      // If no exact match, pick any available flash model or first available
+      const flash = available.find((m) => m.toLowerCase().includes('flash')) || available[0];
+      if (flash) {
+        console.log(`[Gemini] Fallback to available model: ${flash}`);
+        cachedGeminiModel = flash;
+        return flash;
+      }
+    }
+  } catch (error) {
+    console.warn('[Gemini] Model discovery failed, using default:', error);
+  }
+  return DEFAULT_GEMINI_MODEL;
+}
+
+export async function discoverGroqModel(key: string, fast = false): Promise<string> {
+  if (cachedGroqModel && !fast) return cachedGroqModel;
+  try {
+    const res = await timedFetch(
+      GROQ_MODELS_ENDPOINT,
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${key}` },
+      },
+      'groq',
+      10000
+    );
+    if (res.ok) {
+      const data = (await res.json()) as { data?: { id: string; active?: boolean }[] };
+      const activeIds = (data.data || []).filter((m) => m.active !== false).map((m) => m.id);
+
+      console.log(`[Groq] Discovered ${activeIds.length} models for key`);
+
+      if (fast && activeIds.includes('llama-3.1-8b-instant')) {
+        return 'llama-3.1-8b-instant';
+      }
+
+      for (const cand of GROQ_CANDIDATES) {
+        if (activeIds.includes(cand)) {
+          console.log(`[Groq] Selected model: ${cand}`);
+          if (!fast) cachedGroqModel = cand;
+          return cand;
+        }
+      }
+
+      const firstActive = activeIds[0];
+      if (firstActive) {
+        console.log(`[Groq] Fallback to available model: ${firstActive}`);
+        if (!fast) cachedGroqModel = firstActive;
+        return firstActive;
+      }
+    }
+  } catch (error) {
+    console.warn('[Groq] Model discovery failed, using default:', error);
+  }
+  return DEFAULT_GROQ_MODEL;
+}
 
 type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } };
 type AIOptions<T> = {
@@ -37,6 +143,9 @@ async function storeKey(key: string, value: string) {
   } else {
     await SecureStore.deleteItemAsync(key);
   }
+  // Clear model cache when keys change
+  if (key === GEMINI_KEY) cachedGeminiModel = null;
+  if (key === GROQ_KEY) cachedGroqModel = null;
   const check = await SecureStore.getItemAsync(key);
   console.log(`[SecureStore] Key "${key}" updated -> stored length: ${check?.length ?? 0}`);
 }
@@ -156,12 +265,32 @@ async function executeGeminiRequest(modelName: string, prompt: string, key: stri
 }
 
 async function requestGemini(prompt: string, key: string, options: AIOptions<unknown>) {
+  const primaryModel = await discoverGeminiModel(key);
   try {
-    return await executeGeminiRequest(PRIMARY_GEMINI_MODEL, prompt, key, options);
+    return await executeGeminiRequest(primaryModel, prompt, key, options);
   } catch (error) {
-    if (error instanceof ProviderError && (error.status === 404 || error.message.includes('not found'))) {
-      console.warn(`[Gemini] ${PRIMARY_GEMINI_MODEL} not found, falling back to ${FALLBACK_GEMINI_MODEL}`);
-      return await executeGeminiRequest(FALLBACK_GEMINI_MODEL, prompt, key, options);
+    const isModelError =
+      error instanceof ProviderError &&
+      (error.status === 404 ||
+        error.message.includes('not found') ||
+        error.message.includes('no longer available') ||
+        error.message.includes('not supported for generateContent'));
+
+    if (isModelError) {
+      console.warn(`[Gemini] Model ${primaryModel} failed. Clearing cache and trying alternatives...`);
+      cachedGeminiModel = null;
+      for (const cand of GEMINI_CANDIDATES) {
+        if (cand !== primaryModel) {
+          try {
+            console.log(`[Gemini] Retrying with candidate: ${cand}`);
+            const result = await executeGeminiRequest(cand, prompt, key, options);
+            cachedGeminiModel = cand;
+            return result;
+          } catch {
+            // continue next candidate
+          }
+        }
+      }
     }
     throw error;
   }
@@ -172,7 +301,7 @@ async function requestGroq(prompt: string, key: string, options: AIOptions<unkno
     throw new ProviderError('groq', 'Groq models do not support image processing. Please configure Gemini for images.');
   }
 
-  const model = options.fast ? 'llama-3.1-8b-instant' : 'llama-3.3-70b-versatile';
+  const model = await discoverGroqModel(key, options.fast);
   let systemMessage = options.system ?? 'You are StudyHub, a clear and practical study assistant.';
 
   // Groq json_object mode requires that the prompt or system message contains the word "json"
@@ -310,13 +439,14 @@ export async function testGeminiConnection(customKey?: string): Promise<{ succes
   if (!key) return { success: false, message: 'No Gemini API key provided.' };
 
   try {
+    const model = await discoverGeminiModel(key);
     const text = await executeGeminiRequest(
-      PRIMARY_GEMINI_MODEL,
+      model,
       'Hello! Please reply with exactly: "StudyHub Gemini is connected."',
       key,
       { system: 'Be extremely concise.', timeoutMs: 15000 }
     );
-    return { success: true, message: text };
+    return { success: true, message: `${text} (Model: ${model})` };
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Connection failed';
     return { success: false, message: msg };
@@ -328,12 +458,13 @@ export async function testGroqConnection(customKey?: string): Promise<{ success:
   if (!key) return { success: false, message: 'No Groq API key provided.' };
 
   try {
+    const model = await discoverGroqModel(key, true);
     const text = await requestGroq(
       'Hello! Please reply with exactly: "StudyHub Groq is connected."',
       key,
       { system: 'Be extremely concise.', timeoutMs: 15000 }
     );
-    return { success: true, message: text };
+    return { success: true, message: `${text} (Model: ${model})` };
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Connection failed';
     return { success: false, message: msg };
