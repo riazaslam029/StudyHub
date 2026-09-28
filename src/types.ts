@@ -21,7 +21,20 @@ export type SpokenTaskDraft = {
 };
 
 export type AttendanceStatus = 'present' | 'absent' | 'cancelled';
-export type AttendanceRecord = { id: number; date: string; subject_id: number; timetable_slot_id: number | null; status: AttendanceStatus; created_at: string; updated_at: string };
+export type AttendanceRecord = {
+  id: number;
+  date: string;
+  subject_id: number;
+  timetable_slot_id: number | null;
+  status: AttendanceStatus;
+  created_at: string;
+  updated_at: string;
+  subject_name?: string;
+  subject_color?: string;
+  start_time?: string;
+  end_time?: string;
+  room?: string | null;
+};
 export type TodayAttendance = Subject & { timetable_slot_id: number; start_time: string; end_time: string; room: string | null; attendance_status: AttendanceStatus | null };
 export type AttendanceSummary = Subject & { present_count: number; absent_count: number; cancelled_count: number; total_count: number; percentage: number | null };
 

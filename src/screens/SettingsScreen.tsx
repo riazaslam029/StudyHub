@@ -6,15 +6,22 @@ import * as Sharing from 'expo-sharing';
 import { Eye, EyeOff, KeyRound, MapPin, Trash2 } from 'lucide-react-native';
 import {
   AIProvider,
+  DEFAULT_OPENROUTER_MODEL,
+  OPENROUTER_CANDIDATES,
   getAIKeyStatus,
   getApiKey,
   getGroqApiKey,
+  getOpenRouterApiKey,
+  getOpenRouterModel,
   getPrimaryProvider,
   setApiKey,
   setGroqApiKey,
+  setOpenRouterApiKey,
+  setOpenRouterModel,
   setPrimaryProvider,
   testGeminiConnection,
   testGroqConnection,
+  testOpenRouterConnection,
 } from '../ai';
 import { Button, Card, Heading, Input, Row, Screen } from '../components';
 import {
@@ -49,13 +56,18 @@ import { AppTheme, palette } from '../theme';
 import { Subject } from '../types';
 
 export function SettingsScreen({ theme }: { theme: AppTheme }) {
+  const [openrouterKey, setOpenrouterKey] = useState('');
+  const [openrouterModel, setOpenrouterModel] = useState(DEFAULT_OPENROUTER_MODEL);
+  const [showOpenRouterKey, setShowOpenRouterKey] = useState(false);
+  const [testingOpenRouter, setTestingOpenRouter] = useState(false);
+
   const [geminiKey, setGeminiKey] = useState('');
   const [groqKey, setGroqKey] = useState('');
   const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [showGroqKey, setShowGroqKey] = useState(false);
   const [testingGemini, setTestingGemini] = useState(false);
   const [testingGroq, setTestingGroq] = useState(false);
-  const [primary, setPrimary] = useState<AIProvider>('gemini');
+  const [primary, setPrimary] = useState<AIProvider>('openrouter');
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [newSubject, setNewSubject] = useState('');
@@ -88,6 +100,8 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
 
   const refresh = useCallback(async () => {
     const [
+      orKey,
+      orModel,
       key,
       groq,
       provider,
@@ -101,6 +115,8 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
       enabled,
       cats,
     ] = await Promise.all([
+      getOpenRouterApiKey(),
+      getOpenRouterModel(),
       getApiKey(),
       getGroqApiKey(),
       getPrimaryProvider(),
@@ -115,9 +131,11 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
       getSetting('expense_categories'),
     ]);
 
-    console.log('[Settings] Loaded AI keys present -> Gemini:', !!key, 'Groq:', !!groq);
+    console.log('[Settings] Loaded AI keys present -> OpenRouter:', !!orKey, 'Gemini:', !!key, 'Groq:', !!groq);
     console.log('[Settings] Loaded Campus -> Lat:', lat, 'Lon:', lon, 'Enabled:', enabled);
 
+    setOpenrouterKey(orKey ?? '');
+    setOpenrouterModel(orModel || DEFAULT_OPENROUTER_MODEL);
     setGeminiKey(key ?? '');
     setGroqKey(groq ?? '');
     setPrimary(provider);
@@ -140,6 +158,8 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
   const saveAI = async () => {
     try {
       await Promise.all([
+        setOpenRouterApiKey(openrouterKey),
+        setOpenRouterModel(openrouterModel),
         setApiKey(geminiKey),
         setGroqApiKey(groqKey),
         setPrimaryProvider(primary),
@@ -147,15 +167,16 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
       const status = await getAIKeyStatus();
       console.log('[Settings] AI keys successfully saved and verified. Status:', status);
 
+      const activeList: string[] = [];
+      if (status.openrouter) activeList.push('OpenRouter');
+      if (status.gemini) activeList.push('Gemini');
+      if (status.groq) activeList.push('Groq');
+
       Alert.alert(
         'AI settings saved',
-        status.gemini && status.groq
-          ? `${primary === 'gemini' ? 'Gemini' : 'Groq'} is set as primary; the other will serve as automatic fallback.`
-          : status.gemini
-            ? 'Gemini key configured. Text and image AI will work.'
-            : status.groq
-              ? 'Groq key configured. Text AI will work; image import needs a Gemini key.'
-              : 'Keys cleared. Add at least one API key to use AI features.'
+        activeList.length > 0
+          ? `${activeList.join(', ')} configured. Primary: ${primary.toUpperCase()}. Automatic fallback is enabled across active providers.`
+          : 'Keys cleared. Add at least one API key (e.g. free OpenRouter key) to use AI features.'
       );
     } catch (error) {
       console.error('[Settings] Error saving AI keys:', error);
@@ -167,6 +188,22 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
   };
 
   // Test individual AI providers
+  const handleTestOpenRouter = async () => {
+    setTestingOpenRouter(true);
+    try {
+      const res = await testOpenRouterConnection(openrouterKey, openrouterModel);
+      if (res.success) {
+        Alert.alert('OpenRouter Connected Successfully', `Response from OpenRouter:\n\n${res.message}`);
+      } else {
+        Alert.alert('OpenRouter Connection Failed', res.message);
+      }
+    } catch (e) {
+      Alert.alert('OpenRouter Test Error', e instanceof Error ? e.message : 'Unknown test error');
+    } finally {
+      setTestingOpenRouter(false);
+    }
+  };
+
   const handleTestGemini = async () => {
     setTestingGemini(true);
     try {
@@ -400,6 +437,75 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
           right={<KeyRound color={theme.colors.accent} />}
         />
 
+        {/* OpenRouter Key */}
+        <View style={{ gap: 6 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={{ fontWeight: '700', color: theme.colors.text }}>OpenRouter API Key</Text>
+              <View style={{ backgroundColor: theme.colors.accent, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>RECOMMENDED / FREE</Text>
+              </View>
+            </View>
+            <Pressable onPress={() => setShowOpenRouterKey(!showOpenRouterKey)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              {showOpenRouterKey ? <EyeOff size={16} color={theme.colors.muted} /> : <Eye size={16} color={theme.colors.muted} />}
+              <Text style={{ fontSize: 12, color: theme.colors.muted }}>{showOpenRouterKey ? 'Hide' : 'Show'}</Text>
+            </Pressable>
+          </View>
+          <Input
+            theme={theme}
+            value={openrouterKey}
+            onChangeText={setOpenrouterKey}
+            secureTextEntry={!showOpenRouterKey}
+            placeholder="sk-or-v1-..."
+          />
+          <Text style={{ fontSize: 12, color: theme.colors.muted }}>
+            Get a free API key with no credit card required at openrouter.ai/keys
+          </Text>
+
+          {/* Model selection */}
+          <Text style={{ fontWeight: '600', color: theme.colors.text, fontSize: 13, marginTop: 4 }}>Selected OpenRouter Model</Text>
+          <Input
+            theme={theme}
+            value={openrouterModel}
+            onChangeText={setOpenrouterModel}
+            placeholder="google/gemini-2.0-flash-exp:free"
+          />
+
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {OPENROUTER_CANDIDATES.slice(0, 4).map((cand) => {
+              const isSelected = openrouterModel === cand;
+              return (
+                <Pressable
+                  key={cand}
+                  onPress={() => setOpenrouterModel(cand)}
+                  style={{
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 8,
+                    backgroundColor: isSelected ? theme.colors.accent : theme.colors.surfaceSoft,
+                    borderWidth: 1,
+                    borderColor: isSelected ? theme.colors.accent : theme.colors.border,
+                  }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: isSelected ? '#fff' : theme.colors.text }}>
+                    {cand.split('/')[1]?.replace(':free', '') || cand} {cand.includes('gemini') ? '📷' : ''}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4 }}>
+            <Button
+              theme={theme}
+              label={testingOpenRouter ? 'Testing OpenRouter…' : 'Test OpenRouter'}
+              variant="secondary"
+              disabled={testingOpenRouter || !openrouterKey.trim()}
+              onPress={() => void handleTestOpenRouter()}
+            />
+          </View>
+        </View>
+
         {/* Gemini Key */}
         <View style={{ gap: 6 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -455,22 +561,18 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
         </View>
 
         <Text style={{ color: theme.colors.muted, fontSize: 12 }}>
-          {geminiKey.trim() && groqKey.trim()
-            ? 'Both providers configured — automatic fallback enabled.'
-            : geminiKey.trim()
-              ? 'Gemini only — text, vision, and document analysis work.'
-              : groqKey.trim()
-                ? 'Groq only — text features work; image import and document OCR require Gemini.'
-                : 'No API keys set yet. Paste your Gemini or Groq key above.'}
+          {openrouterKey.trim() || geminiKey.trim() || groqKey.trim()
+            ? `Active providers: ${[openrouterKey.trim() && 'OpenRouter', geminiKey.trim() && 'Gemini', groqKey.trim() && 'Groq'].filter(Boolean).join(' + ')}. Automatic fallback enabled.`
+            : 'No API keys set yet. Paste your OpenRouter, Gemini, or Groq key above.'}
         </Text>
 
         <Text style={{ color: theme.colors.text, fontWeight: '700' }}>Primary text provider</Text>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          {(['gemini', 'groq'] as AIProvider[]).map((v) => (
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {(['openrouter', 'gemini', 'groq'] as AIProvider[]).map((v) => (
             <View key={v} style={{ flex: 1 }}>
               <Button
                 theme={theme}
-                label={v === 'gemini' ? 'Gemini (Primary)' : 'Groq (Primary)'}
+                label={v === 'openrouter' ? 'OpenRouter' : v === 'gemini' ? 'Gemini' : 'Groq'}
                 variant={primary === v ? 'primary' : 'secondary'}
                 onPress={() => setPrimary(v)}
               />
