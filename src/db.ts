@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import {
-  AiSource, Attachment, AttendanceStatus, AttendanceSummary, Exam, ExamType, Expense, ExpenseSummary, Flashcard, FlashcardDraft, FlashcardGroup,
+  AiSource, Attachment, AttendanceRecord, AttendanceStatus, AttendanceSummary, Exam, ExamType, Expense, ExpenseSummary, Flashcard, FlashcardDraft, FlashcardGroup,
   GradeKind, GroupProject, GroupProjectItem, LetterGrade, Note, RecurringTopic, Semester, SemesterSubject, Slot, StudyPlanItem, Subject, SubjectContact, Task, TaskStatus,
   TodayAttendance, gradePoints,
 } from './types';
@@ -134,6 +134,70 @@ export async function saveSource(subjectId: number, rawText: string) { await dat
 export async function getTodayAttendance(dayOfWeek: number, date: string) { return database.getAllAsync<TodayAttendance>(`SELECT sub.*,ts.id timetable_slot_id,ts.start_time,ts.end_time,ts.room,a.status attendance_status FROM timetable_slots ts JOIN subjects sub ON sub.id=ts.subject_id LEFT JOIN attendance a ON a.timetable_slot_id=ts.id AND a.date=? WHERE ts.day_of_week=? ORDER BY ts.start_time`, [date, dayOfWeek]); }
 export async function markAttendance(date: string, subjectId: number, timetableSlotId: number, status: AttendanceStatus) { const stamp = now(); await database.runAsync('INSERT INTO attendance(date,subject_id,timetable_slot_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(date,timetable_slot_id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at', [date, subjectId, timetableSlotId, status, stamp, stamp]); }
 export async function getAttendanceSummaries() { return database.getAllAsync<AttendanceSummary>(`SELECT s.*,COALESCE(SUM(CASE WHEN a.status='present' THEN 1 ELSE 0 END),0) present_count,COALESCE(SUM(CASE WHEN a.status='absent' THEN 1 ELSE 0 END),0) absent_count,COALESCE(SUM(CASE WHEN a.status='cancelled' THEN 1 ELSE 0 END),0) cancelled_count,COALESCE(SUM(CASE WHEN a.status IN ('present','absent') THEN 1 ELSE 0 END),0) total_count,CASE WHEN SUM(CASE WHEN a.status IN ('present','absent') THEN 1 ELSE 0 END)>0 THEN ROUND(100.0*SUM(CASE WHEN a.status='present' THEN 1 ELSE 0 END)/SUM(CASE WHEN a.status IN ('present','absent') THEN 1 ELSE 0 END),1) ELSE NULL END percentage FROM subjects s LEFT JOIN attendance a ON a.subject_id=s.id GROUP BY s.id ORDER BY percentage IS NULL,percentage ASC,s.name`); }
+
+export async function getAttendanceHistory(subjectId?: number, date?: string, limit = 100) {
+  let sql = `SELECT a.*, s.name as subject_name, s.color as subject_color, ts.start_time, ts.end_time, ts.room FROM attendance a JOIN subjects s ON s.id=a.subject_id LEFT JOIN timetable_slots ts ON ts.id=a.timetable_slot_id`;
+  const clauses: string[] = [];
+  const params: (number | string)[] = [];
+  if (subjectId !== undefined) {
+    clauses.push('a.subject_id=?');
+    params.push(subjectId);
+  }
+  if (date !== undefined) {
+    clauses.push('a.date=?');
+    params.push(date);
+  }
+  if (clauses.length) {
+    sql += ` WHERE ${clauses.join(' AND ')}`;
+  }
+  sql += ` ORDER BY a.date DESC, a.id DESC LIMIT ?`;
+  params.push(limit);
+  return database.getAllAsync<AttendanceRecord>(sql, params);
+}
+
+export async function recordManualAttendance(date: string, subjectId: number, status: AttendanceStatus, timetableSlotId: number | null = null) {
+  const stamp = now();
+  if (timetableSlotId) {
+    await database.runAsync(
+      'INSERT INTO attendance(date,subject_id,timetable_slot_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(date,timetable_slot_id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at',
+      [date, subjectId, timetableSlotId, status, stamp, stamp]
+    );
+  } else {
+    const existing = await database.getFirstAsync<{ id: number }>(
+      'SELECT id FROM attendance WHERE date=? AND subject_id=? AND timetable_slot_id IS NULL LIMIT 1',
+      [date, subjectId]
+    );
+    if (existing) {
+      await database.runAsync('UPDATE attendance SET status=?, updated_at=? WHERE id=?', [status, stamp, existing.id]);
+    } else {
+      await database.runAsync(
+        'INSERT INTO attendance(date,subject_id,timetable_slot_id,status,created_at,updated_at) VALUES(?,?,NULL,?,?,?)',
+        [date, subjectId, status, stamp, stamp]
+      );
+    }
+  }
+}
+
+export async function updateAttendanceRecordStatus(id: number, status: AttendanceStatus) {
+  const stamp = now();
+  await database.runAsync('UPDATE attendance SET status=?, updated_at=? WHERE id=?', [status, stamp, id]);
+}
+
+export async function deleteAttendanceRecord(id: number) {
+  await database.runAsync('DELETE FROM attendance WHERE id=?', [id]);
+}
+
+export async function quickAdjustAttendance(subjectId: number, status: AttendanceStatus, count = 1) {
+  const stamp = now();
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  for (let i = 0; i < count; i++) {
+    await database.runAsync(
+      'INSERT INTO attendance(date,subject_id,timetable_slot_id,status,created_at,updated_at) VALUES(?,?,NULL,?,?,?)',
+      [today, subjectId, status, stamp, stamp]
+    );
+  }
+}
 
 export async function getSemesters() { return database.getAllAsync<Semester>(`SELECT se.*,COALESCE(SUM(ss.credit_hours),0) total_credits,CASE WHEN SUM(ss.credit_hours)>0 THEN SUM(ss.credit_hours*ss.grade_points)/SUM(ss.credit_hours) ELSE 0 END gpa FROM semesters se LEFT JOIN semester_subjects ss ON ss.semester_id=se.id AND ss.grade_kind='actual' GROUP BY se.id ORDER BY se.id DESC`); }
 export async function addSemester(name: string) { const r = await database.runAsync('INSERT INTO semesters(name,created_at) VALUES(?,?)', [name.trim(), now()]); return r.lastInsertRowId; }

@@ -2,19 +2,33 @@ import * as SecureStore from 'expo-secure-store';
 import { getSetting, setSetting } from './db';
 import { FlashcardDraft, GradeDraft, SpokenTaskDraft, Subject, TaskType, TimetableDraft } from './types';
 
-export type AIProvider = 'gemini' | 'groq';
+export type AIProvider = 'openrouter' | 'gemini' | 'groq';
 export type AIResult<T = string> = { data: T; provider: AIProvider };
 
 const GEMINI_KEY = 'studyhub_gemini_api_key';
 const GROQ_KEY = 'studyhub_groq_api_key';
+const OPENROUTER_KEY = 'studyhub_openrouter_api_key';
+
+// OpenRouter model configuration
+export const DEFAULT_OPENROUTER_MODEL = 'google/gemini-2.0-flash-exp:free';
+export const OPENROUTER_CANDIDATES = [
+  'google/gemini-2.0-flash-exp:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'qwen/qwen-2.5-72b-instruct:free',
+  'deepseek/deepseek-r1:free',
+  'meta-llama/llama-3.1-8b-instruct:free',
+  'mistralai/mistral-7b-instruct:free',
+];
+const OPENROUTER_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
+const OPENROUTER_MODELS_ENDPOINT = 'https://openrouter.ai/api/v1/models';
 
 // Model configuration and candidate lists
-const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
+const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
 const GEMINI_CANDIDATES = [
-  'gemini-3.8-flash',
-  'gemini-2.5-flash',
   'gemini-2.0-flash',
+  'gemini-2.5-flash',
   'gemini-1.5-flash',
+  'gemini-2.0-flash-lite',
   'gemini-1.5-pro',
 ];
 
@@ -35,6 +49,7 @@ const GROQ_MODELS_ENDPOINT = 'https://api.groq.com/openai/v1/models';
 
 let cachedGeminiModel: string | null = null;
 let cachedGroqModel: string | null = null;
+let cachedOpenRouterModel: string | null = null;
 
 export async function discoverGeminiModel(key: string): Promise<string> {
   if (cachedGeminiModel) return cachedGeminiModel;
@@ -146,6 +161,7 @@ async function storeKey(key: string, value: string) {
   // Clear model cache when keys change
   if (key === GEMINI_KEY) cachedGeminiModel = null;
   if (key === GROQ_KEY) cachedGroqModel = null;
+  if (key === OPENROUTER_KEY) cachedOpenRouterModel = null;
   const check = await SecureStore.getItemAsync(key);
   console.log(`[SecureStore] Key "${key}" updated -> stored length: ${check?.length ?? 0}`);
 }
@@ -172,9 +188,37 @@ export const setGroqApiKey = async (key: string) => {
   console.log(`[AI Key] Groq key saved. Verified retrievable: ${!!verify}, length: ${verify?.length ?? 0}`);
 };
 
+export const getOpenRouterApiKey = async () => {
+  const key = await SecureStore.getItemAsync(OPENROUTER_KEY);
+  return key?.trim() || null;
+};
+
+export const setOpenRouterApiKey = async (key: string) => {
+  await storeKey(OPENROUTER_KEY, key);
+  const verify = await getOpenRouterApiKey();
+  console.log(`[AI Key] OpenRouter key saved. Verified retrievable: ${!!verify}, length: ${verify?.length ?? 0}`);
+};
+
+export const getOpenRouterModel = async () => {
+  const saved = await getSetting('openrouter_selected_model');
+  return saved?.trim() || DEFAULT_OPENROUTER_MODEL;
+};
+
+export const setOpenRouterModel = async (model: string) => {
+  const clean = model.trim() || DEFAULT_OPENROUTER_MODEL;
+  await setSetting('openrouter_selected_model', clean);
+  cachedOpenRouterModel = clean;
+};
+
 export async function getPrimaryProvider(): Promise<AIProvider> {
   const setting = await getSetting('primary_ai_provider');
-  return setting === 'groq' ? 'groq' : 'gemini';
+  if (setting === 'openrouter' || setting === 'gemini' || setting === 'groq') {
+    return setting;
+  }
+  const [openrouter, gemini] = await Promise.all([getOpenRouterApiKey(), getApiKey()]);
+  if (openrouter) return 'openrouter';
+  if (gemini) return 'gemini';
+  return 'openrouter';
 }
 
 export async function setPrimaryProvider(provider: AIProvider) {
@@ -183,8 +227,12 @@ export async function setPrimaryProvider(provider: AIProvider) {
 }
 
 export async function getAIKeyStatus() {
-  const [gemini, groq] = await Promise.all([getApiKey(), getGroqApiKey()]);
-  return { gemini: !!gemini, groq: !!groq };
+  const [openrouter, gemini, groq] = await Promise.all([
+    getOpenRouterApiKey(),
+    getApiKey(),
+    getGroqApiKey(),
+  ]);
+  return { openrouter: !!openrouter, gemini: !!gemini, groq: !!groq };
 }
 
 async function timedFetch(url: string, init: RequestInit, provider: AIProvider, timeoutMs: number) {
@@ -353,6 +401,129 @@ async function requestGroq(prompt: string, key: string, options: AIOptions<unkno
   return text;
 }
 
+async function executeOpenRouterRequest(
+  model: string,
+  prompt: string,
+  key: string,
+  options: AIOptions<unknown>
+): Promise<string> {
+  const systemMessage = options.system ?? 'You are StudyHub, a practical, accurate study assistant.';
+
+  let userContent: unknown = prompt;
+  if (options.image) {
+    userContent = [
+      { type: 'text', text: prompt },
+      {
+        type: 'image_url',
+        image_url: {
+          url: `data:${options.image.mimeType};base64,${options.image.base64}`,
+        },
+      },
+    ];
+  }
+
+  const payload: Record<string, unknown> = {
+    model,
+    messages: [
+      { role: 'system', content: systemMessage },
+      { role: 'user', content: userContent },
+    ],
+    temperature: options.json ? 0 : 0.35,
+  };
+
+  if (options.json) {
+    payload.response_format = { type: 'json_object' };
+  }
+
+  const response = await timedFetch(
+    OPENROUTER_ENDPOINT,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'HTTP-Referer': 'https://studyhub.app',
+        'X-Title': 'StudyHub Student Suite',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    },
+    'openrouter',
+    options.timeoutMs ?? 35000
+  );
+
+  const rawText = await response.text();
+  let body: {
+    choices?: { message?: { content?: string } }[];
+    error?: { message?: string; code?: number | string };
+  } = {};
+
+  try {
+    body = JSON.parse(rawText);
+  } catch {
+    // Body is not JSON
+  }
+
+  if (!response.ok || body.error) {
+    const errorMsg = body.error?.message || `HTTP ${response.status}: ${rawText.slice(0, 200) || response.statusText}`;
+    throw new ProviderError('openrouter', errorMsg, response.status);
+  }
+
+  const text = body.choices?.[0]?.message?.content?.trim();
+  if (!text) throw new ProviderError('openrouter', 'Empty response returned by OpenRouter model');
+  return text;
+}
+
+async function requestOpenRouter(prompt: string, key: string, options: AIOptions<unknown>) {
+  const preferredModel = await getOpenRouterModel();
+  const candidatesToTry = options.image
+    ? [
+        preferredModel,
+        'google/gemini-2.0-flash-exp:free',
+        'meta-llama/llama-3.2-11b-vision-instruct:free',
+      ]
+    : [
+        preferredModel,
+        ...OPENROUTER_CANDIDATES.filter((m) => m !== preferredModel),
+      ];
+
+  let lastError: Error | null = null;
+  for (const model of candidatesToTry) {
+    try {
+      console.log(`[OpenRouter] Requesting model: ${model}`);
+      return await executeOpenRouterRequest(model, prompt, key, options);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn(`[OpenRouter] Model ${model} failed:`, lastError.message);
+      if (err instanceof ProviderError && (err.status === 401 || err.status === 403)) {
+        throw err;
+      }
+    }
+  }
+  throw lastError ?? new ProviderError('openrouter', 'All candidate OpenRouter models failed.');
+}
+
+export async function testOpenRouterConnection(
+  customKey?: string,
+  customModel?: string
+): Promise<{ success: boolean; message: string }> {
+  const key = customKey?.trim() || (await getOpenRouterApiKey());
+  if (!key) return { success: false, message: 'No OpenRouter API key provided.' };
+
+  const model = customModel?.trim() || (await getOpenRouterModel());
+  try {
+    const text = await executeOpenRouterRequest(
+      model,
+      'Hello! Please reply with exactly: "StudyHub OpenRouter is connected."',
+      key,
+      { system: 'Be extremely concise.', timeoutMs: 20000 }
+    );
+    return { success: true, message: `${text} (Model: ${model})` };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Connection failed';
+    return { success: false, message: msg };
+  }
+}
+
 function extractJson(raw: string) {
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const body = (fenced?.[1] ?? raw).trim();
@@ -366,15 +537,37 @@ export async function askAI<T = string>(prompt: string, options: AIOptions<T> = 
   const primary = await getPrimaryProvider();
   const status = await getAIKeyStatus();
 
-  // Execution order: respect user toggle, with Groq falling back to Gemini or vice-versa
-  const order: AIProvider[] = options.image
-    ? ['gemini']
-    : [primary, primary === 'gemini' ? 'groq' : 'gemini'];
+  let order: AIProvider[] = [];
+  if (options.image) {
+    if (primary === 'openrouter' && status.openrouter) {
+      order = ['openrouter', ...(status.gemini ? ['gemini' as AIProvider] : [])];
+    } else if (status.gemini) {
+      order = ['gemini', ...(status.openrouter ? ['openrouter' as AIProvider] : [])];
+    } else if (status.openrouter) {
+      order = ['openrouter'];
+    }
+  } else {
+    const allProviders: AIProvider[] = ['openrouter', 'gemini', 'groq'];
+    if (status[primary]) {
+      order.push(primary);
+    }
+    for (const p of allProviders) {
+      if (status[p] && !order.includes(p)) {
+        order.push(p);
+      }
+    }
+  }
 
   const errors: string[] = [];
 
   for (const provider of order) {
-    const key = provider === 'gemini' ? await getApiKey() : await getGroqApiKey();
+    const key =
+      provider === 'openrouter'
+        ? await getOpenRouterApiKey()
+        : provider === 'gemini'
+          ? await getApiKey()
+          : await getGroqApiKey();
+
     if (!key) {
       continue;
     }
@@ -389,9 +582,11 @@ export async function askAI<T = string>(prompt: string, options: AIOptions<T> = 
 
         console.log(`[AI] Attempting ${provider} (attempt ${attempt + 1}/${attempts})...`);
         const raw =
-          provider === 'gemini'
-            ? await requestGemini(strictPrompt, key, options)
-            : await requestGroq(strictPrompt, key, options);
+          provider === 'openrouter'
+            ? await requestOpenRouter(strictPrompt, key, options)
+            : provider === 'gemini'
+              ? await requestGemini(strictPrompt, key, options)
+              : await requestGroq(strictPrompt, key, options);
 
         const value = options.json
           ? options.validate
@@ -406,7 +601,6 @@ export async function askAI<T = string>(prompt: string, options: AIOptions<T> = 
         console.warn(`[AI] Error with ${provider}:`, errorMsg);
         errors.push(`[${provider.toUpperCase()}] ${errorMsg}`);
 
-        // If client error (e.g. 400 Invalid key, 401 Unauthorized, 403 Forbidden), don't retry same provider
         if (error instanceof ProviderError && error.status && [400, 401, 403].includes(error.status)) {
           break;
         }
@@ -417,13 +611,12 @@ export async function askAI<T = string>(prompt: string, options: AIOptions<T> = 
     }
   }
 
-  // Clear, detailed error messages
-  if (!status.gemini && !status.groq) {
-    throw new Error('No AI API keys configured. Please add your Gemini or Groq key in Settings first.');
+  if (!status.openrouter && !status.gemini && !status.groq) {
+    throw new Error('No AI API keys configured. Please add your OpenRouter, Gemini, or Groq key in Settings first.');
   }
 
-  if (options.image && !status.gemini) {
-    throw new Error('Image and document AI requires a Gemini API key. Please add a Gemini key in Settings.');
+  if (options.image && !status.gemini && !status.openrouter) {
+    throw new Error('Image and document AI requires an OpenRouter or Gemini key. Please add one in Settings.');
   }
 
   if (errors.length > 0) {
