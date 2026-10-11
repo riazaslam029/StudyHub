@@ -53,7 +53,7 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
   const [editSubjectName, setEditSubjectName] = useState('');
   const [editSubjectCode, setEditSubjectCode] = useState('');
   const [editSubjectTeacher, setEditSubjectTeacher] = useState('');
-  const [editSubjectColor, setEditSubjectColor] = useState(palette.clay);
+  const [editSubjectColor, setEditSubjectColor] = useState<string>(palette.clay);
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [newSubject, setNewSubject] = useState('');
