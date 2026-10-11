@@ -1,11 +1,11 @@
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { CheckCircle2, Circle, Mic, MicOff, Sparkles, Trash2, X } from 'lucide-react-native';
+import { CheckCircle2, Circle, Mic, MicOff, Pencil, Sparkles, Trash2, X } from 'lucide-react-native';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { extractTaskFromSpokenNote } from '../ai';
 import { Button, Card, DateField, Empty, Heading, Input, Row, Screen, Sheet } from '../components';
-import { deleteTask, getSubjects, getTasks, saveTask, updateTaskStatus } from '../db';
+import { deleteTask, getSubjects, getTasks, saveTask, updateTask, updateTaskStatus } from '../db';
 import { rescheduleAllDueReminders, scheduleDueReminders } from '../notifications';
 import { AppTheme } from '../theme';
 import { Priority, Subject, Task, TaskStatus, TaskType } from '../types';
@@ -28,6 +28,17 @@ export function TasksScreen({ theme, route }: { theme: AppTheme; route: any }) {
   const [notes, setNotes] = useState('');
   const [campusReminder, setCampusReminder] = useState(false);
   const [subjectId, setSubjectId] = useState<number | undefined>();
+
+  // Manual Edit Task Sheet
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editType, setEditType] = useState<TaskType>('assignment');
+  const [editPriority, setEditPriority] = useState<Priority>('medium');
+  const [editDue, setEditDue] = useState<Date | null>(null);
+  const [editNotes, setEditNotes] = useState('');
+  const [editCampusReminder, setEditCampusReminder] = useState(false);
+  const [editSubjectId, setEditSubjectId] = useState<number | null>(null);
 
   // Voice Note -> Task Flow
   const [isVoiceRecordingOpen, setIsVoiceRecordingOpen] = useState(false);
@@ -245,6 +256,39 @@ export function TasksScreen({ theme, route }: { theme: AppTheme; route: any }) {
     }
   };
 
+  const openEditTask = (task: Task) => {
+    setEditingTaskId(task.id);
+    setEditTitle(task.title);
+    setEditType(task.type);
+    setEditPriority(task.priority);
+    setEditDue(task.due_at ? new Date(task.due_at) : null);
+    setEditNotes(task.notes ?? '');
+    setEditCampusReminder(task.campus_reminder === 1);
+    setEditSubjectId(task.subject_id ?? null);
+    setEditOpen(true);
+  };
+
+  const saveEditedTask = async () => {
+    if (!editingTaskId) return;
+    if (!editTitle.trim()) return Alert.alert('Add a title first');
+    const dueAt = editDue ? editDue.toISOString() : null;
+    await updateTask(editingTaskId, {
+      title: editTitle.trim(),
+      type: editType,
+      priority: editPriority,
+      subject_id: editSubjectId,
+      due_at: dueAt,
+      notes: editNotes.trim() || null,
+      campus_reminder: editCampusReminder ? 1 : 0,
+    });
+    const updatedTasks = await getTasks();
+    await rescheduleAllDueReminders(updatedTasks);
+    setEditOpen(false);
+    setEditingTaskId(null);
+    void refresh();
+    Alert.alert('Task Updated', 'Changes have been saved successfully.');
+  };
+
   return (
     <Screen theme={theme} scroll={false}>
       <Heading theme={theme} eyebrow="Deadlines, without dread">
@@ -303,6 +347,9 @@ export function TasksScreen({ theme, route }: { theme: AppTheme; route: any }) {
                       ) : (
                         <Circle color={theme.colors.muted} />
                       )}
+                    </Pressable>
+                    <Pressable onPress={() => openEditTask(task)}>
+                      <Pencil size={17} color={theme.colors.accent} />
                     </Pressable>
                     <Pressable
                       onPress={async () => {
@@ -397,22 +444,29 @@ export function TasksScreen({ theme, route }: { theme: AppTheme; route: any }) {
               </Text>
             </View>
 
-            {/* Live Transcript Display */}
+            {/* Live Transcript Display - Editable */}
             <View
               style={{
-                minHeight: 70,
-                padding: 12,
                 borderRadius: 12,
                 backgroundColor: theme.colors.surfaceSoft,
                 borderWidth: 1,
                 borderColor: theme.colors.border,
+                padding: 12,
+                gap: 6,
               }}
             >
-              <Text style={{ color: theme.colors.muted, fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
-                LIVE TRANSCRIPT:
+              <Text style={{ color: theme.colors.muted, fontSize: 11, fontWeight: '700' }}>
+                TRANSCRIPT (EDITABLE):
               </Text>
-              <Text style={{ color: theme.colors.text, fontSize: 15, fontStyle: transcript ? 'normal' : 'italic' }}>
-                {transcript || 'Start speaking your task…'}
+              <Input
+                theme={theme}
+                value={transcript}
+                onChangeText={setTranscript}
+                placeholder="Start speaking or type here..."
+                multiline
+              />
+              <Text style={{ color: theme.colors.muted, fontSize: 11 }}>
+                You can edit or type words directly above before tapping 'Done & Review'.
               </Text>
             </View>
 
@@ -674,6 +728,83 @@ export function TasksScreen({ theme, route }: { theme: AppTheme; route: any }) {
             ))}
           </View>
           <Button theme={theme} label="Save task" onPress={() => void create()} />
+        </View>
+      </Sheet>
+
+      {/* MANUAL EDIT TASK SHEET */}
+      <Sheet theme={theme} visible={editOpen} onClose={() => setEditOpen(false)} title="Edit Task">
+        <View style={{ gap: 11 }}>
+          <Input theme={theme} label="Title" value={editTitle} onChangeText={setEditTitle} placeholder="Task title" />
+          <Choice label="Type" values={types} selected={editType} set={(value) => setEditType(value as TaskType)} theme={theme} />
+          <Choice label="Priority" values={priorities} selected={editPriority} set={(value) => setEditPriority(value as Priority)} theme={theme} />
+          <DateField theme={theme} label="Due date & time (optional)" value={editDue} onChange={setEditDue} />
+          <Input theme={theme} label="Notes" value={editNotes} onChangeText={setEditNotes} placeholder="Requirements or notes" multiline />
+          <Pressable
+            onPress={() => setEditCampusReminder(!editCampusReminder)}
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              paddingVertical: 8,
+            }}
+          >
+            <Text style={{ fontWeight: '700', color: theme.colors.text }}>Remind me when I reach campus</Text>
+            <View
+              style={{
+                width: 42,
+                height: 24,
+                borderRadius: 12,
+                padding: 3,
+                alignItems: editCampusReminder ? 'flex-end' : 'flex-start',
+                backgroundColor: editCampusReminder ? theme.colors.accent : theme.colors.border,
+              }}
+            >
+              <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff' }} />
+            </View>
+          </Pressable>
+          <Text style={{ fontWeight: '700', color: theme.colors.text }}>Course (optional)</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+            <Pressable
+              onPress={() => setEditSubjectId(null)}
+              style={{
+                padding: 8,
+                borderRadius: 9,
+                backgroundColor: editSubjectId === null ? theme.colors.accent : theme.colors.surfaceSoft,
+              }}
+            >
+              <Text
+                style={{
+                  fontWeight: '700',
+                  fontSize: 12,
+                  color: editSubjectId === null ? '#fff' : theme.colors.text,
+                }}
+              >
+                Personal / None
+              </Text>
+            </Pressable>
+            {subjects.map((subject) => (
+              <Pressable
+                key={subject.id}
+                onPress={() => setEditSubjectId(subject.id)}
+                style={{
+                  padding: 8,
+                  borderRadius: 9,
+                  backgroundColor: editSubjectId === subject.id ? subject.color : theme.colors.surfaceSoft,
+                }}
+              >
+                <Text
+                  style={{
+                    fontWeight: '700',
+                    fontSize: 12,
+                    color: editSubjectId === subject.id ? '#fff' : theme.colors.text,
+                  }}
+                >
+                  {subject.name}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <Button theme={theme} label="Save Changes" onPress={() => void saveEditedTask()} />
         </View>
       </Sheet>
     </Screen>
