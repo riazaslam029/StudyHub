@@ -66,6 +66,17 @@ export async function setSetting(key: string, value: string) { await database.ru
 
 export async function getSubjects() { return database.getAllAsync<Subject>('SELECT * FROM subjects ORDER BY name'); }
 export async function addSubject(subject: Omit<Subject, 'id'>) { const r = await database.runAsync('INSERT INTO subjects(name,code,color,teacher) VALUES(?,?,?,?)', [subject.name, subject.code, subject.color, subject.teacher]); return r.lastInsertRowId; }
+export async function updateSubject(id: number, subject: Partial<Omit<Subject, 'id'>>) {
+  const fields: string[] = [];
+  const params: (string | number | null)[] = [];
+  if (subject.name !== undefined) { fields.push('name=?'); params.push(subject.name.trim()); }
+  if (subject.code !== undefined) { fields.push('code=?'); params.push(subject.code ? subject.code.trim() : null); }
+  if (subject.teacher !== undefined) { fields.push('teacher=?'); params.push(subject.teacher ? subject.teacher.trim() : null); }
+  if (subject.color !== undefined) { fields.push('color=?'); params.push(subject.color); }
+  if (fields.length === 0) return;
+  params.push(id);
+  await database.runAsync(`UPDATE subjects SET ${fields.join(', ')} WHERE id=?`, params);
+}
 export async function deleteSubject(id: number) {
   await database.withTransactionAsync(async () => {
     await database.runAsync('DELETE FROM timetable_slots WHERE subject_id=?', [id]);
@@ -107,6 +118,22 @@ export async function importTimetableRows(rows: ConfirmedSlotDraft[], replace: b
 export async function getTasks(options: { status?: TaskStatus; today?: boolean } = {}) { let sql = 'SELECT t.*,s.name subject_name,s.color subject_color FROM tasks t LEFT JOIN subjects s ON s.id=t.subject_id'; const clauses: string[] = []; const params: string[] = []; if (options.status) { clauses.push('t.status=?'); params.push(options.status); } if (options.today) clauses.push("date(t.due_at,'localtime')=date('now','localtime')"); if (clauses.length) sql += ` WHERE ${clauses.join(' AND ')}`; sql += " ORDER BY CASE WHEN t.status='done' THEN 1 ELSE 0 END,t.due_at IS NULL,t.due_at"; return database.getAllAsync<Task>(sql, params); }
 export async function saveTask(task: Omit<Task, 'id' | 'subject_name' | 'subject_color'>) { const r = await database.runAsync('INSERT INTO tasks(title,type,subject_id,due_at,priority,status,notes,recurring,campus_reminder,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)', [task.title, task.type, task.subject_id, task.due_at, task.priority, task.status, task.notes, task.recurring, task.campus_reminder ?? 0, now()]); return r.lastInsertRowId; }
 export async function updateTaskStatus(id: number, status: TaskStatus) { await database.runAsync('UPDATE tasks SET status=? WHERE id=?', [status, id]); }
+export async function updateTask(id: number, task: Partial<Omit<Task, 'id' | 'subject_name' | 'subject_color'>>) {
+  const fields: string[] = [];
+  const params: (string | number | null)[] = [];
+  if (task.title !== undefined) { fields.push('title=?'); params.push(task.title.trim()); }
+  if (task.type !== undefined) { fields.push('type=?'); params.push(task.type); }
+  if (task.priority !== undefined) { fields.push('priority=?'); params.push(task.priority); }
+  if (task.status !== undefined) { fields.push('status=?'); params.push(task.status); }
+  if (task.subject_id !== undefined) { fields.push('subject_id=?'); params.push(task.subject_id); }
+  if (task.due_at !== undefined) { fields.push('due_at=?'); params.push(task.due_at); }
+  if (task.notes !== undefined) { fields.push('notes=?'); params.push(task.notes); }
+  if (task.recurring !== undefined) { fields.push('recurring=?'); params.push(task.recurring); }
+  if (task.campus_reminder !== undefined) { fields.push('campus_reminder=?'); params.push(task.campus_reminder); }
+  if (fields.length === 0) return;
+  params.push(id);
+  await database.runAsync(`UPDATE tasks SET ${fields.join(', ')} WHERE id=?`, params);
+}
 export async function deleteTask(id: number) { await database.runAsync('DELETE FROM tasks WHERE id=?', [id]); }
 
 export async function getNotes(query = '') { return database.getAllAsync<Note>('SELECT n.*,s.name subject_name,s.color subject_color FROM notes n LEFT JOIN subjects s ON s.id=n.subject_id WHERE n.title LIKE ? OR n.content_json LIKE ? ORDER BY n.updated_at DESC', [`%${query}%`, `%${query}%`]); }
@@ -197,6 +224,53 @@ export async function quickAdjustAttendance(subjectId: number, status: Attendanc
       [today, subjectId, status, stamp, stamp]
     );
   }
+}
+
+export async function setSubjectAttendanceCounts(
+  subjectId: number,
+  presentCount: number,
+  absentCount: number,
+  cancelledCount: number = 0
+) {
+  const stamp = now();
+  const d = new Date();
+  await database.withTransactionAsync(async () => {
+    await database.runAsync('DELETE FROM attendance WHERE subject_id=?', [subjectId]);
+
+    for (let i = 0; i < presentCount; i++) {
+      const past = new Date(d);
+      past.setDate(past.getDate() - i);
+      const dateStr = `${past.getFullYear()}-${String(past.getMonth() + 1).padStart(2, '0')}-${String(past.getDate()).padStart(2, '0')}`;
+      await database.runAsync(
+        'INSERT INTO attendance(date,subject_id,timetable_slot_id,status,created_at,updated_at) VALUES(?,?,NULL,?,?,?)',
+        [dateStr, subjectId, 'present', stamp, stamp]
+      );
+    }
+
+    for (let i = 0; i < absentCount; i++) {
+      const past = new Date(d);
+      past.setDate(past.getDate() - (presentCount + i + 1));
+      const dateStr = `${past.getFullYear()}-${String(past.getMonth() + 1).padStart(2, '0')}-${String(past.getDate()).padStart(2, '0')}`;
+      await database.runAsync(
+        'INSERT INTO attendance(date,subject_id,timetable_slot_id,status,created_at,updated_at) VALUES(?,?,NULL,?,?,?)',
+        [dateStr, subjectId, 'absent', stamp, stamp]
+      );
+    }
+
+    for (let i = 0; i < cancelledCount; i++) {
+      const past = new Date(d);
+      past.setDate(past.getDate() - (presentCount + absentCount + i + 1));
+      const dateStr = `${past.getFullYear()}-${String(past.getMonth() + 1).padStart(2, '0')}-${String(past.getDate()).padStart(2, '0')}`;
+      await database.runAsync(
+        'INSERT INTO attendance(date,subject_id,timetable_slot_id,status,created_at,updated_at) VALUES(?,?,NULL,?,?,?)',
+        [dateStr, subjectId, 'cancelled', stamp, stamp]
+      );
+    }
+  });
+}
+
+export async function clearSubjectAttendance(subjectId: number) {
+  await database.runAsync('DELETE FROM attendance WHERE subject_id=?', [subjectId]);
 }
 
 export async function getSemesters() { return database.getAllAsync<Semester>(`SELECT se.*,COALESCE(SUM(ss.credit_hours),0) total_credits,CASE WHEN SUM(ss.credit_hours)>0 THEN SUM(ss.credit_hours*ss.grade_points)/SUM(ss.credit_hours) ELSE 0 END gpa FROM semesters se LEFT JOIN semester_subjects ss ON ss.semester_id=se.id AND ss.grade_kind='actual' GROUP BY se.id ORDER BY se.id DESC`); }
