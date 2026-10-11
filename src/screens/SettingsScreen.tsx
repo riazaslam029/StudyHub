@@ -3,27 +3,13 @@ import { Alert, Pressable, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { Eye, EyeOff, KeyRound, MapPin, Trash2 } from 'lucide-react-native';
+import { Eye, EyeOff, KeyRound, MapPin, Pencil, Trash2 } from 'lucide-react-native';
 import {
-  AIProvider,
-  DEFAULT_OPENROUTER_MODEL,
-  OPENROUTER_CANDIDATES,
-  getAIKeyStatus,
   getApiKey,
-  getGroqApiKey,
-  getOpenRouterApiKey,
-  getOpenRouterModel,
-  getPrimaryProvider,
   setApiKey,
-  setGroqApiKey,
-  setOpenRouterApiKey,
-  setOpenRouterModel,
-  setPrimaryProvider,
   testGeminiConnection,
-  testGroqConnection,
-  testOpenRouterConnection,
 } from '../ai';
-import { Button, Card, Heading, Input, Row, Screen } from '../components';
+import { Button, Card, Heading, Input, Row, Screen, Sheet } from '../components';
 import {
   addSubject,
   deleteSubject,
@@ -34,6 +20,7 @@ import {
   getTasks,
   restoreDatabase,
   setSetting,
+  updateSubject,
 } from '../db';
 import {
   geocodeCampusAddress,
@@ -56,18 +43,17 @@ import { AppTheme, palette } from '../theme';
 import { Subject } from '../types';
 
 export function SettingsScreen({ theme }: { theme: AppTheme }) {
-  const [openrouterKey, setOpenrouterKey] = useState('');
-  const [openrouterModel, setOpenrouterModel] = useState(DEFAULT_OPENROUTER_MODEL);
-  const [showOpenRouterKey, setShowOpenRouterKey] = useState(false);
-  const [testingOpenRouter, setTestingOpenRouter] = useState(false);
-
   const [geminiKey, setGeminiKey] = useState('');
-  const [groqKey, setGroqKey] = useState('');
   const [showGeminiKey, setShowGeminiKey] = useState(false);
-  const [showGroqKey, setShowGroqKey] = useState(false);
   const [testingGemini, setTestingGemini] = useState(false);
-  const [testingGroq, setTestingGroq] = useState(false);
-  const [primary, setPrimary] = useState<AIProvider>('openrouter');
+
+  // Edit Subject Modal
+  const [editSubjectOpen, setEditSubjectOpen] = useState(false);
+  const [editingSubjectId, setEditingSubjectId] = useState<number | null>(null);
+  const [editSubjectName, setEditSubjectName] = useState('');
+  const [editSubjectCode, setEditSubjectCode] = useState('');
+  const [editSubjectTeacher, setEditSubjectTeacher] = useState('');
+  const [editSubjectColor, setEditSubjectColor] = useState(palette.clay);
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [newSubject, setNewSubject] = useState('');
@@ -100,11 +86,7 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
 
   const refresh = useCallback(async () => {
     const [
-      orKey,
-      orModel,
       key,
-      groq,
-      provider,
       courses,
       savedSemester,
       prefs,
@@ -115,11 +97,7 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
       enabled,
       cats,
     ] = await Promise.all([
-      getOpenRouterApiKey(),
-      getOpenRouterModel(),
       getApiKey(),
-      getGroqApiKey(),
-      getPrimaryProvider(),
       getSubjects(),
       getSetting('semester'),
       getReminderPreferences(),
@@ -131,14 +109,7 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
       getSetting('expense_categories'),
     ]);
 
-    console.log('[Settings] Loaded AI keys present -> OpenRouter:', !!orKey, 'Gemini:', !!key, 'Groq:', !!groq);
-    console.log('[Settings] Loaded Campus -> Lat:', lat, 'Lon:', lon, 'Enabled:', enabled);
-
-    setOpenrouterKey(orKey ?? '');
-    setOpenrouterModel(orModel || DEFAULT_OPENROUTER_MODEL);
     setGeminiKey(key ?? '');
-    setGroqKey(groq ?? '');
-    setPrimary(provider);
     setSubjects(courses);
     setSemester(savedSemester ?? 'Comsats 5th Semester');
     setPreferences(prefs);
@@ -154,53 +125,22 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
     void refresh();
   }, [refresh]);
 
-  // Save AI Settings
+  // Save AI Settings (Google Gemini)
   const saveAI = async () => {
     try {
-      await Promise.all([
-        setOpenRouterApiKey(openrouterKey),
-        setOpenRouterModel(openrouterModel),
-        setApiKey(geminiKey),
-        setGroqApiKey(groqKey),
-        setPrimaryProvider(primary),
-      ]);
-      const status = await getAIKeyStatus();
-      console.log('[Settings] AI keys successfully saved and verified. Status:', status);
-
-      const activeList: string[] = [];
-      if (status.openrouter) activeList.push('OpenRouter');
-      if (status.gemini) activeList.push('Gemini');
-      if (status.groq) activeList.push('Groq');
-
+      await setApiKey(geminiKey);
       Alert.alert(
         'AI settings saved',
-        activeList.length > 0
-          ? `${activeList.join(', ')} configured. Primary: ${primary.toUpperCase()}. Automatic fallback is enabled across active providers.`
-          : 'Keys cleared. Add at least one API key (e.g. free OpenRouter key) to use AI features.'
+        geminiKey.trim()
+          ? 'Google Gemini API key successfully configured for all AI features.'
+          : 'Google Gemini key cleared.'
       );
     } catch (error) {
-      console.error('[Settings] Error saving AI keys:', error);
+      console.error('[Settings] Error saving Gemini key:', error);
       Alert.alert(
-        'Could not save AI keys',
+        'Could not save Gemini key',
         error instanceof Error ? error.message : 'Secure storage error. Please try again.'
       );
-    }
-  };
-
-  // Test individual AI providers
-  const handleTestOpenRouter = async () => {
-    setTestingOpenRouter(true);
-    try {
-      const res = await testOpenRouterConnection(openrouterKey, openrouterModel);
-      if (res.success) {
-        Alert.alert('OpenRouter Connected Successfully', `Response from OpenRouter:\n\n${res.message}`);
-      } else {
-        Alert.alert('OpenRouter Connection Failed', res.message);
-      }
-    } catch (e) {
-      Alert.alert('OpenRouter Test Error', e instanceof Error ? e.message : 'Unknown test error');
-    } finally {
-      setTestingOpenRouter(false);
     }
   };
 
@@ -209,7 +149,7 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
     try {
       const res = await testGeminiConnection(geminiKey);
       if (res.success) {
-        Alert.alert('Gemini Connected Successfully', `Response from Gemini:\n\n${res.message}`);
+        Alert.alert('Gemini Connected Successfully', `Response from Google Gemini:\n\n${res.message}`);
       } else {
         Alert.alert('Gemini Connection Failed', res.message);
       }
@@ -220,20 +160,30 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
     }
   };
 
-  const handleTestGroq = async () => {
-    setTestingGroq(true);
-    try {
-      const res = await testGroqConnection(groqKey);
-      if (res.success) {
-        Alert.alert('Groq Connected Successfully', `Response from Groq:\n\n${res.message}`);
-      } else {
-        Alert.alert('Groq Connection Failed', res.message);
-      }
-    } catch (e) {
-      Alert.alert('Groq Test Error', e instanceof Error ? e.message : 'Unknown test error');
-    } finally {
-      setTestingGroq(false);
+  const openEditSubject = (subj: Subject) => {
+    setEditingSubjectId(subj.id);
+    setEditSubjectName(subj.name);
+    setEditSubjectCode(subj.code ?? '');
+    setEditSubjectTeacher(subj.teacher ?? '');
+    setEditSubjectColor(subj.color || palette.clay);
+    setEditSubjectOpen(true);
+  };
+
+  const saveEditedSubject = async () => {
+    if (!editingSubjectId) return;
+    if (!editSubjectName.trim()) {
+      return Alert.alert('Course name cannot be empty');
     }
+    await updateSubject(editingSubjectId, {
+      name: editSubjectName.trim(),
+      code: editSubjectCode.trim() || null,
+      teacher: editSubjectTeacher.trim() || null,
+      color: editSubjectColor,
+    });
+    setEditSubjectOpen(false);
+    setEditingSubjectId(null);
+    await refresh();
+    Alert.alert('Course Updated', `Updated "${editSubjectName.trim()}" successfully.`);
   };
 
   // Geocode address search
@@ -428,88 +378,24 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
     <Screen theme={theme}>
       <Heading theme={theme} eyebrow="Make it yours">Settings</Heading>
 
-      {/* AI PROVIDERS */}
+      {/* AI PROVIDER (GOOGLE GEMINI) */}
       <Card theme={theme}>
         <Row
           theme={theme}
-          title="AI providers"
-          subtitle="API keys are kept strictly in secure device storage"
+          title="Google Gemini AI"
+          subtitle="All StudyHub AI features (vision, notes, quizzes, voice) run directly on Google Gemini"
           right={<KeyRound color={theme.colors.accent} />}
         />
-
-        {/* OpenRouter Key */}
-        <View style={{ gap: 6 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={{ fontWeight: '700', color: theme.colors.text }}>OpenRouter API Key</Text>
-              <View style={{ backgroundColor: theme.colors.accent, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
-                <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>RECOMMENDED / FREE</Text>
-              </View>
-            </View>
-            <Pressable onPress={() => setShowOpenRouterKey(!showOpenRouterKey)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              {showOpenRouterKey ? <EyeOff size={16} color={theme.colors.muted} /> : <Eye size={16} color={theme.colors.muted} />}
-              <Text style={{ fontSize: 12, color: theme.colors.muted }}>{showOpenRouterKey ? 'Hide' : 'Show'}</Text>
-            </Pressable>
-          </View>
-          <Input
-            theme={theme}
-            value={openrouterKey}
-            onChangeText={setOpenrouterKey}
-            secureTextEntry={!showOpenRouterKey}
-            placeholder="sk-or-v1-..."
-          />
-          <Text style={{ fontSize: 12, color: theme.colors.muted }}>
-            Get a free API key with no credit card required at openrouter.ai/keys
-          </Text>
-
-          {/* Model selection */}
-          <Text style={{ fontWeight: '600', color: theme.colors.text, fontSize: 13, marginTop: 4 }}>Selected OpenRouter Model</Text>
-          <Input
-            theme={theme}
-            value={openrouterModel}
-            onChangeText={setOpenrouterModel}
-            placeholder="google/gemini-2.0-flash-exp:free"
-          />
-
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            {OPENROUTER_CANDIDATES.slice(0, 4).map((cand) => {
-              const isSelected = openrouterModel === cand;
-              return (
-                <Pressable
-                  key={cand}
-                  onPress={() => setOpenrouterModel(cand)}
-                  style={{
-                    paddingHorizontal: 8,
-                    paddingVertical: 4,
-                    borderRadius: 8,
-                    backgroundColor: isSelected ? theme.colors.accent : theme.colors.surfaceSoft,
-                    borderWidth: 1,
-                    borderColor: isSelected ? theme.colors.accent : theme.colors.border,
-                  }}
-                >
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: isSelected ? '#fff' : theme.colors.text }}>
-                    {cand.split('/')[1]?.replace(':free', '') || cand} {cand.includes('gemini') ? '📷' : ''}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4 }}>
-            <Button
-              theme={theme}
-              label={testingOpenRouter ? 'Testing OpenRouter…' : 'Test OpenRouter'}
-              variant="secondary"
-              disabled={testingOpenRouter || !openrouterKey.trim()}
-              onPress={() => void handleTestOpenRouter()}
-            />
-          </View>
-        </View>
 
         {/* Gemini Key */}
         <View style={{ gap: 6 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontWeight: '700', color: theme.colors.text }}>Google Gemini API Key</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={{ fontWeight: '700', color: theme.colors.text }}>Gemini API Key</Text>
+              <View style={{ backgroundColor: theme.colors.positive, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>ACTIVE</Text>
+              </View>
+            </View>
             <Pressable onPress={() => setShowGeminiKey(!showGeminiKey)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               {showGeminiKey ? <EyeOff size={16} color={theme.colors.muted} /> : <Eye size={16} color={theme.colors.muted} />}
               <Text style={{ fontSize: 12, color: theme.colors.muted }}>{showGeminiKey ? 'Hide' : 'Show'}</Text>
@@ -522,7 +408,10 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
             secureTextEntry={!showGeminiKey}
             placeholder="AIzaSy..."
           />
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+          <Text style={{ fontSize: 12, color: theme.colors.muted }}>
+            Get your free API key at ai.google.dev (Google AI Studio). Powers speech-to-task parsing, exam prep, timetable OCR, and study assistance.
+          </Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4 }}>
             <Button
               theme={theme}
               label={testingGemini ? 'Testing Gemini…' : 'Test Gemini'}
@@ -533,54 +422,7 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
           </View>
         </View>
 
-        {/* Groq Key */}
-        <View style={{ gap: 6 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontWeight: '700', color: theme.colors.text }}>Groq API Key (Text Fallback)</Text>
-            <Pressable onPress={() => setShowGroqKey(!showGroqKey)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              {showGroqKey ? <EyeOff size={16} color={theme.colors.muted} /> : <Eye size={16} color={theme.colors.muted} />}
-              <Text style={{ fontSize: 12, color: theme.colors.muted }}>{showGroqKey ? 'Hide' : 'Show'}</Text>
-            </Pressable>
-          </View>
-          <Input
-            theme={theme}
-            value={groqKey}
-            onChangeText={setGroqKey}
-            secureTextEntry={!showGroqKey}
-            placeholder="gsk_..."
-          />
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-            <Button
-              theme={theme}
-              label={testingGroq ? 'Testing Groq…' : 'Test Groq'}
-              variant="secondary"
-              disabled={testingGroq || !groqKey.trim()}
-              onPress={() => void handleTestGroq()}
-            />
-          </View>
-        </View>
-
-        <Text style={{ color: theme.colors.muted, fontSize: 12 }}>
-          {openrouterKey.trim() || geminiKey.trim() || groqKey.trim()
-            ? `Active providers: ${[openrouterKey.trim() && 'OpenRouter', geminiKey.trim() && 'Gemini', groqKey.trim() && 'Groq'].filter(Boolean).join(' + ')}. Automatic fallback enabled.`
-            : 'No API keys set yet. Paste your OpenRouter, Gemini, or Groq key above.'}
-        </Text>
-
-        <Text style={{ color: theme.colors.text, fontWeight: '700' }}>Primary text provider</Text>
-        <View style={{ flexDirection: 'row', gap: 6 }}>
-          {(['openrouter', 'gemini', 'groq'] as AIProvider[]).map((v) => (
-            <View key={v} style={{ flex: 1 }}>
-              <Button
-                theme={theme}
-                label={v === 'openrouter' ? 'OpenRouter' : v === 'gemini' ? 'Gemini' : 'Groq'}
-                variant={primary === v ? 'primary' : 'secondary'}
-                onPress={() => setPrimary(v)}
-              />
-            </View>
-          ))}
-        </View>
-
-        <Button theme={theme} label="Save AI settings" onPress={() => void saveAI()} />
+        <Button theme={theme} label="Save Gemini Key" onPress={() => void saveAI()} />
       </Card>
 
       {/* CAMPUS LOCATION & REMINDERS */}
@@ -808,36 +650,42 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
             key={subject.id}
             theme={theme}
             title={subject.name}
+            subtitle={subject.code || subject.teacher ? `${subject.code ?? ''}${subject.code && subject.teacher ? ' · ' : ''}${subject.teacher ?? ''}` : null}
             right={
-              <Pressable
-                onPress={() =>
-                  Alert.alert(
-                    'Delete course?',
-                    `Deleting ${subject.name} removes its timetable, attendance, exams, study plan, patterns, and contact. Other linked content (tasks, notes) becomes unlinked.`,
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Delete',
-                        style: 'destructive',
-                        onPress: async () => {
-                          await deleteSubject(subject.id);
-                          const remainingSlots = await getSlots();
-                          await Promise.all([
-                            rescheduleAllClassReminders(remainingSlots),
-                            rescheduleAllDueReminders(await getTasks()),
-                            rescheduleAttendancePrompts(remainingSlots),
-                            rescheduleStudyPlanReminders(),
-                            rescheduleWeeklyDigest(),
-                          ]);
-                          await refresh();
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Pressable onPress={() => openEditSubject(subject)}>
+                  <Pencil color={theme.colors.accent} size={18} />
+                </Pressable>
+                <Pressable
+                  onPress={() =>
+                    Alert.alert(
+                      'Delete course?',
+                      `Deleting ${subject.name} removes its timetable, attendance, exams, study plan, patterns, and contact. Other linked content (tasks, notes) becomes unlinked.`,
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Delete',
+                          style: 'destructive',
+                          onPress: async () => {
+                            await deleteSubject(subject.id);
+                            const remainingSlots = await getSlots();
+                            await Promise.all([
+                              rescheduleAllClassReminders(remainingSlots),
+                              rescheduleAllDueReminders(await getTasks()),
+                              rescheduleAttendancePrompts(remainingSlots),
+                              rescheduleStudyPlanReminders(),
+                              rescheduleWeeklyDigest(),
+                            ]);
+                            await refresh();
+                          },
                         },
-                      },
-                    ]
-                  )
-                }
-              >
-                <Trash2 color={theme.colors.danger} size={18} />
-              </Pressable>
+                      ]
+                    )
+                  }
+                >
+                  <Trash2 color={theme.colors.danger} size={18} />
+                </Pressable>
+              </View>
             }
           />
         ))}
@@ -855,6 +703,58 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
         <Button theme={theme} label="Export JSON backup" variant="secondary" onPress={() => void exportBackup()} />
         <Button theme={theme} label="Import JSON backup" variant="secondary" onPress={() => void importBackup()} />
       </Card>
+
+      {/* EDIT COURSE SHEET */}
+      <Sheet theme={theme} visible={editSubjectOpen} onClose={() => setEditSubjectOpen(false)} title="Edit Course">
+        <View style={{ gap: 12 }}>
+          <Input
+            theme={theme}
+            label="Course Name"
+            value={editSubjectName}
+            onChangeText={setEditSubjectName}
+            placeholder="e.g. Operating Systems"
+          />
+
+          <Input
+            theme={theme}
+            label="Course Code (Optional)"
+            value={editSubjectCode}
+            onChangeText={setEditSubjectCode}
+            placeholder="e.g. CSC320"
+          />
+
+          <Input
+            theme={theme}
+            label="Instructor / Teacher (Optional)"
+            value={editSubjectTeacher}
+            onChangeText={setEditSubjectTeacher}
+            placeholder="e.g. Dr. Ahmad"
+          />
+
+          <Text style={{ fontWeight: '700', color: theme.colors.text }}>Course Color</Text>
+          <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+            {[palette.clay, palette.moss, '#5878A6', '#946D42', '#8C4351', '#3B6E8C', '#5F7C5D'].map((c) => {
+              const isSelected = editSubjectColor === c;
+              return (
+                <Pressable
+                  key={c}
+                  onPress={() => setEditSubjectColor(c)}
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 19,
+                    backgroundColor: c,
+                    borderWidth: isSelected ? 3 : 1,
+                    borderColor: isSelected ? theme.colors.text : 'transparent',
+                  }}
+                />
+              );
+            })}
+          </View>
+
+          <Button theme={theme} label="Save Course Details" onPress={() => void saveEditedSubject()} />
+        </View>
+      </Sheet>
     </Screen>
   );
 }
