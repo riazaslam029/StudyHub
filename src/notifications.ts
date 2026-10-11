@@ -127,22 +127,57 @@ export async function rescheduleAllClassReminders(slots: Slot[], preferences?: R
   return true;
 }
 
+export async function cancelTaskReminders(taskId: number) {
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  await Promise.all(
+    scheduled
+      .filter((notification) => notification.content.data?.type === 'task' && notification.content.data?.taskId === taskId)
+      .map((notification) => Notifications.cancelScheduledNotificationAsync(notification.identifier))
+  );
+}
+
 async function scheduleDue(task: Task, prefs: ReminderPreferences) {
-  if (!task.due_at || task.status === 'done') return;
-  const due = new Date(task.due_at).getTime();
-  const entries = [[prefs.deadlineOneDay, 86400000, 'Tomorrow'], [prefs.deadlineThreeHours, 10800000, 'In 3 hours']] as const;
-  for (const [enabled, offset, label] of entries) {
-    const date = new Date(due - offset);
-    if (enabled && date.getTime() > Date.now()) {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: `${label}: ${task.title}`,
-          body: `${task.type.charAt(0).toUpperCase()}${task.type.slice(1)} deadline in StudyHub`,
-          sound: 'default',
-          data: { type: 'task', taskId: task.id },
-        },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date, channelId },
-      });
+  if (task.status === 'done') {
+    await cancelTaskReminders(task.id);
+    return;
+  }
+
+  // Cancel existing notifications for this task before scheduling new ones
+  await cancelTaskReminders(task.id);
+
+  // 1. Recurring 3-hour reminder until marked done
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: `Pending Task: ${task.title}`,
+      body: `Don't forget your ${task.type}${task.due_at ? ` (Due: ${new Date(task.due_at).toLocaleDateString()})` : ''}! Tap to review or mark done.`,
+      sound: 'default',
+      data: { type: 'task', taskId: task.id },
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: 3 * 3600,
+      repeats: true,
+      channelId,
+    },
+  });
+
+  // 2. Specific deadline proximity reminders
+  if (task.due_at) {
+    const due = new Date(task.due_at).getTime();
+    const entries = [[prefs.deadlineOneDay, 86400000, 'Tomorrow'], [prefs.deadlineThreeHours, 10800000, 'In 3 hours']] as const;
+    for (const [enabled, offset, label] of entries) {
+      const date = new Date(due - offset);
+      if (enabled && date.getTime() > Date.now()) {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: `${label}: ${task.title}`,
+            body: `${task.type.charAt(0).toUpperCase()}${task.type.slice(1)} deadline in StudyHub`,
+            sound: 'default',
+            data: { type: 'task', taskId: task.id },
+          },
+          trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date, channelId },
+        });
+      }
     }
   }
 }
@@ -172,8 +207,8 @@ async function scheduleAttendancePrompt(slot: Slot) {
   }
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: `Did you attend ${slot.subject_name ?? 'class'}?`,
-      body: 'Mark attendance without opening StudyHub.',
+      title: `Class Ended: ${slot.subject_name ?? 'Class'}`,
+      body: 'Mark your attendance now! Was any quiz, homework, or assignment given in class today? Tap to add to your to-do list.',
       sound: 'default',
       categoryIdentifier: attendanceCategory,
       data: { type: 'attendance-action', slotId: slot.id, subjectId: slot.subject_id },
@@ -195,8 +230,8 @@ async function scheduleAttendanceSnooze(data: AttendanceData, occurrenceDate: st
   const date = new Date(Date.now() + snoozeMinutes * 60 * 1000);
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: 'Attendance check',
-      body: 'Did you attend this class?',
+      title: 'Class Follow-up & Attendance',
+      body: 'Did you attend class? Make sure to record any homework, quiz, or assignment given today in your tasks!',
       sound: 'default',
       categoryIdentifier: attendanceCategory,
       data: { type: 'attendance-snooze', slotId: data.slotId, subjectId: data.subjectId, occurrenceDate },
