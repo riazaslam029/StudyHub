@@ -3,17 +3,19 @@
 <div align="center">
 
 ![StudyHub Banner](https://img.shields.io/badge/StudyHub-Student%20OS-6366F1?style=for-the-badge&logo=academic-tree&logoColor=white)
+[![Download APK](https://img.shields.io/badge/Download-Latest%20APK-brightgreen?style=for-the-badge&logo=android&logoColor=white)](https://expo.dev/artifacts/eas/eL6CBPEd2AdJLP6WWhIHU-MSGlUTcKkHmuQ0C3qb1uM.apk)
 
 [![Expo SDK](https://img.shields.io/badge/Expo-SDK%2054-000020?style=for-the-badge&logo=expo&logoColor=white)](https://expo.dev)
 [![React Native](https://img.shields.io/badge/React%20Native-0.81-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactnative.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![SQLite](https://img.shields.io/badge/SQLite-Offline%20First-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org)
+[![Google Gemini](https://img.shields.io/badge/AI-Google%20Gemini-4285F4?style=for-the-badge&logo=google-gemini&logoColor=white)](https://ai.google.dev)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
 **An intelligent, offline-first personal academic companion built for university and college students.**  
-*Zero cloud dependencies, complete privacy, instant local SQLite storage, and optional on-device AI acceleration.*
+*Zero cloud dependencies, complete privacy, instant local SQLite storage, and Google Gemini AI acceleration.*
 
-[Key Features](#-features) • [Architecture](#-architecture--privacy) • [Getting Started](#-getting-started) • [Building APK](#-building-the-android-apk) • [Contributing](#-contributing)
+[📥 Download Latest APK](https://expo.dev/artifacts/eas/eL6CBPEd2AdJLP6WWhIHU-MSGlUTcKkHmuQ0C3qb1uM.apk) • [Key Features](#-features) • [Architecture](#-architecture--privacy) • [Getting Started](#-getting-started) • [Building APK](#-building-the-android-apk) • [Contributing](#-contributing)
 
 </div>
 
@@ -26,7 +28,7 @@ Most student productivity apps require continuous internet connectivity, recurri
 **StudyHub** is engineered with a strict **Offline-First, Privacy-First** philosophy:
 - 🔒 **100% Local Storage**: Your notes, schedules, attendance, grades, and expenses never leave your device.
 - ⚡ **Zero Latency**: Powered by local embedded SQLite with instant reads and transactional writes.
-- 🤖 **Dual-Engine AI (Optional)**: Connect your own Google Gemini or Groq API keys (stored securely in Android Keystore / iOS Keychain) for OCR and natural language task generation. When offline, all core functions continue to work seamlessly.
+- 🤖 **Pure Google Gemini AI (Optional)**: Connect your Google Gemini API key (stored securely in Android Keystore / iOS Keychain) for multimodal OCR, timetable parsing, transcript analysis, and natural language task extraction. When offline, all core functions continue to work seamlessly.
 
 ---
 
@@ -39,22 +41,25 @@ Most student productivity apps require continuous internet connectivity, recurri
 
 ### 🎙️ 2. Voice Note → Auto Task Extraction
 - **Spoken Task Capture**: Dictate thoughts naturally (e.g., *"Submit discrete math assignment next Tuesday by 4 PM and review quiz topics"*).
-- **Intelligent Entity Resolution**: The AI parses due dates, maps tasks to existing enrolled subjects, and assigns priority levels.
+- **Editable Live Transcript**: The transcribed text appears in an editable input box so you can adjust speech typos or add details before AI extraction.
+- **Intelligent Entity Resolution**: Gemini AI automatically parses due dates, maps tasks to existing enrolled subjects, and assigns priority levels.
 - **Review & Confirm Guardrail**: Every extracted draft is presented in an interactive review modal—nothing is saved without student confirmation.
 
 ### 📅 3. Smart Timetable & Class Reminders
 - **Weekly Schedule Matrix**: Track lectures, labs, and tutorials by day, room, and instructor.
 - **Exact Class Alarms**: Automated local notifications triggered 5 minutes before each lecture via Android exact alarms.
+- **Class-End Attendance & Homework Prompts**: 5 minutes after class ends, StudyHub notifies you to mark attendance and prompts you to record any homework, quiz, or assignment given during the lecture.
 - **Timetable Scanner**: Import your semester schedule directly from a photo or syllabus snapshot using multimodal vision parsing.
 
 ### ✅ 4. Task, Assignment & Quiz Tracker
-- Track assignments, quizzes, midterms, and daily todos.
+- Track assignments, quizzes, midterms, and daily todos with priority levels.
+- **Manual Task Editing**: Freely edit task title, type, priority, linked course, due date, notes, and campus arrival reminder at any time.
+- **Recurring 3-Hour Reminders**: Scheduled reminders repeat every 3 hours for pending tasks until marked done.
 - Priority tagging (High, Medium, Low) with smart overdue filters.
-- Direct links between tasks and academic subjects.
 
 ### 📊 5. Attendance Tracker with Low-Attendance Alerts
-- Log status for every class slot: **Present**, **Absent**, or **Cancelled**.
-- Real-time attendance percentage calculations per subject.
+- **Direct Attendance Count Editor**: Directly edit Present, Absent, and Cancelled numbers for any course with real-time recalculation of attendance percentages and catch-up/safe-to-miss projections.
+- **Manual Log & Status Toggling**: Record manual attendance for specific dates, toggle history status (Present ⇄ Absent ⇄ Cancelled), or reset course attendance records.
 - Automated warning alerts whenever attendance falls below the mandatory 75% university threshold.
 
 ### 🎯 6. GPA Calculator & Transcript Importer
@@ -88,11 +93,11 @@ Most student productivity apps require continuous internet connectivity, recurri
 │                        StudyHub App                          │
 │          (React Native 0.81 + Expo SDK 54 + TypeScript)       │
 ├──────────────────────────────┬───────────────────────────────┤
-│         Offline Layer        │      Optional AI Cloud        │
+│         Offline Layer        │      Google Gemini AI Cloud   │
 ├──────────────────────────────┼───────────────────────────────┤
-│ • SQLite (studyhub.db)       │ • Google Gemini 2.0 Flash     │
-│ • Local File System Storage  │ • Groq (LLaMA 3.3 70B)        │
-│ • Android Alarm Manager      │ • Multimodal Vision OCR       │
+│ • SQLite (studyhub.db)       │ • Google Gemini 2.0 / 2.5     │
+│ • Local File System Storage  │ • Multimodal Vision OCR       │
+│ • Android Alarm Manager      │ • Speech-to-Task AI Parsing   │
 │ • SecureStore (Hardware Key) │ • SecureStore API Key Storage │
 └──────────────────────────────┴───────────────────────────────┘
 ```
@@ -137,8 +142,14 @@ Most student productivity apps require continuous internet connectivity, recurri
 
 ---
 
-## 📱 Building the Android APK
+## 📱 Download & Build the Android APK
 
+### 📥 Direct APK Download
+You can download the latest compiled standalone APK directly:
+- **Latest APK Download**: [Download StudyHub APK (Build 48ba1806)](https://expo.dev/artifacts/eas/eL6CBPEd2AdJLP6WWhIHU-MSGlUTcKkHmuQ0C3qb1uM.apk)
+- **EAS Build Dashboard**: [View Build on Expo EAS](https://expo.dev/accounts/riaz7/projects/studyhub/builds/48ba1806-99ab-42eb-9701-30487fce5730)
+
+### 🛠️ Building Your Own APK
 StudyHub includes pre-configured build profiles via Expo Application Services (EAS):
 
 1. **Install EAS CLI**:
