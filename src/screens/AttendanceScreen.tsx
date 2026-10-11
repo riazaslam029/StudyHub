@@ -16,6 +16,7 @@ import {
 } from 'lucide-react-native';
 import { Button, Card, Empty, Heading, Input, Row, Screen, Sheet } from '../components';
 import {
+  clearSubjectAttendance,
   deleteAttendanceRecord,
   getAttendanceHistory,
   getAttendanceSummaries,
@@ -25,6 +26,7 @@ import {
   markAttendance,
   quickAdjustAttendance,
   recordManualAttendance,
+  setSubjectAttendanceCounts,
   updateAttendanceRecordStatus,
 } from '../db';
 import { AppTheme } from '../theme';
@@ -44,6 +46,11 @@ export function AttendanceScreen({ theme }: { theme: AppTheme }) {
   // Sheets and Modals
   const [showManualModal, setShowManualModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showEditCountsModal, setShowEditCountsModal] = useState(false);
+  const [editCountsSubject, setEditCountsSubject] = useState<AttendanceSummary | null>(null);
+  const [editPresentText, setEditPresentText] = useState('0');
+  const [editAbsentText, setEditAbsentText] = useState('0');
+  const [editCancelledText, setEditCancelledText] = useState('0');
   const [filterSubjectId, setFilterSubjectId] = useState<number | null>(null);
 
   // Manual entry draft
@@ -126,6 +133,54 @@ export function AttendanceScreen({ theme }: { theme: AppTheme }) {
         },
       },
     ]);
+  };
+
+  const openEditCounts = (item: AttendanceSummary) => {
+    setEditCountsSubject(item);
+    setEditPresentText(String(item.present_count));
+    setEditAbsentText(String(item.absent_count));
+    setEditCancelledText(String(item.cancelled_count));
+    setShowEditCountsModal(true);
+  };
+
+  const handleSaveCounts = async () => {
+    if (!editCountsSubject) return;
+    const p = parseInt(editPresentText, 10);
+    const a = parseInt(editAbsentText, 10);
+    const c = parseInt(editCancelledText, 10);
+
+    if (isNaN(p) || p < 0 || isNaN(a) || a < 0) {
+      Alert.alert('Invalid counts', 'Please enter valid positive numbers (e.g. 0 or higher).');
+      return;
+    }
+
+    await setSubjectAttendanceCounts(editCountsSubject.id, p, a, isNaN(c) || c < 0 ? 0 : c);
+    setShowEditCountsModal(false);
+    setEditCountsSubject(null);
+    await refresh();
+    Alert.alert('Attendance Updated', `Attendance for ${editCountsSubject.name} updated to ${p} present and ${a} absent.`);
+  };
+
+  const handleClearAttendance = async () => {
+    if (!editCountsSubject) return;
+    Alert.alert(
+      'Reset Attendance?',
+      `Are you sure you want to reset all attendance records for ${editCountsSubject.name}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset to 0',
+          style: 'destructive',
+          onPress: async () => {
+            await clearSubjectAttendance(editCountsSubject.id);
+            setShowEditCountsModal(false);
+            setEditCountsSubject(null);
+            await refresh();
+            Alert.alert('Reset', 'Attendance counts have been reset to 0.');
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -366,6 +421,21 @@ export function AttendanceScreen({ theme }: { theme: AppTheme }) {
                 </Pressable>
 
                 <Pressable
+                  onPress={() => openEditCounts(item)}
+                  style={{
+                    backgroundColor: theme.colors.accentSoft,
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: theme.colors.accent,
+                  }}
+                >
+                  <Edit3 size={16} color={theme.colors.accent} />
+                </Pressable>
+
+                <Pressable
                   onPress={() => {
                     setFilterSubjectId(item.id);
                     setShowHistoryModal(true);
@@ -569,6 +639,56 @@ export function AttendanceScreen({ theme }: { theme: AppTheme }) {
               />
             )}
           </View>
+        </View>
+      </Sheet>
+
+      {/* MODAL: DIRECT ATTENDANCE COUNT EDITOR */}
+      <Sheet
+        theme={theme}
+        visible={showEditCountsModal}
+        onClose={() => setShowEditCountsModal(false)}
+        title={`Edit Attendance: ${editCountsSubject?.name ?? ''}`}
+      >
+        <View style={{ gap: 14 }}>
+          <Text style={{ color: theme.colors.muted, fontSize: 13, lineHeight: 18 }}>
+            Directly set your total attendance counts. Your attendance percentage will recalculate automatically.
+          </Text>
+
+          <Input
+            theme={theme}
+            label="Present Classes"
+            value={editPresentText}
+            onChangeText={setEditPresentText}
+            placeholder="e.g. 15"
+            keyboardType="number-pad"
+          />
+
+          <Input
+            theme={theme}
+            label="Absent Classes"
+            value={editAbsentText}
+            onChangeText={setEditAbsentText}
+            placeholder="e.g. 3"
+            keyboardType="number-pad"
+          />
+
+          <Input
+            theme={theme}
+            label="Cancelled Classes (Optional)"
+            value={editCancelledText}
+            onChangeText={setEditCancelledText}
+            placeholder="e.g. 0"
+            keyboardType="number-pad"
+          />
+
+          <Button theme={theme} label="Save Attendance Counts" onPress={() => void handleSaveCounts()} />
+
+          <Button
+            theme={theme}
+            label="Reset Attendance for this Subject"
+            variant="danger"
+            onPress={() => void handleClearAttendance()}
+          />
         </View>
       </Sheet>
     </Screen>
