@@ -205,7 +205,7 @@ StudyHub/
 
 ## 🤝 Contributing
 
-Contributions, feature suggestions, and bug reports are welcome!
+Contributions, feature suggestions and bug reports are welcome!
 
 1. Fork the Project
 2. Create your Feature Branch (`git checkout -b feat/AmazingFeature`)
