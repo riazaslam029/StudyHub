@@ -5,7 +5,15 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "scheme": "studyhub",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#25245A"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
     "android": {
       "package": "com.studyhub.app",
       "permissions": [
@@ -14,7 +22,8 @@
         "android.permission.RECORD_AUDIO"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#F6F4EF"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#25245A"
       }
     },
     "plugins": [
