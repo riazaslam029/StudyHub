@@ -3,7 +3,7 @@ import { Alert, Pressable, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { Eye, EyeOff, KeyRound, MapPin, Pencil, Trash2 } from 'lucide-react-native';
+import { Eye, EyeOff, KeyRound, Pencil, Trash2 } from 'lucide-react-native';
 import {
   getApiKey,
   setApiKey,
@@ -23,12 +23,6 @@ import {
   updateSubject,
 } from '../db';
 import {
-  geocodeCampusAddress,
-  getCurrentCampusLocation,
-  requestCampusLocationPermission,
-} from '../location';
-import {
-  configureNotifications,
   getReminderPreferences,
   ReminderPreferences,
   rescheduleAllClassReminders,
@@ -60,16 +54,6 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
   const [semester, setSemester] = useState('Comsats 5th Semester');
   const [attendanceThreshold, setAttendanceThreshold] = useState('75');
 
-  // Campus location state
-  const [campusSearch, setCampusSearch] = useState('');
-  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
-  const [isLocatingCurrent, setIsLocatingCurrent] = useState(false);
-  const [campusLat, setCampusLat] = useState('');
-  const [campusLon, setCampusLon] = useState('');
-  const [campusRadius, setCampusRadius] = useState('200');
-  const [campusEnabled, setCampusEnabled] = useState(false);
-  const [resolvedLocationName, setResolvedLocationName] = useState('');
-
   const [categories, setCategories] = useState('Food, Transport, Hostel/Mess, Other');
   const [preferences, setPreferences] = useState<ReminderPreferences>({
     classLeadMinutes: 5,
@@ -91,10 +75,6 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
       savedSemester,
       prefs,
       threshold,
-      lat,
-      lon,
-      radius,
-      enabled,
       cats,
     ] = await Promise.all([
       getApiKey(),
@@ -102,10 +82,6 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
       getSetting('semester'),
       getReminderPreferences(),
       getSetting('attendance_threshold'),
-      getSetting('campus_latitude'),
-      getSetting('campus_longitude'),
-      getSetting('campus_radius'),
-      getSetting('campus_location_enabled'),
       getSetting('expense_categories'),
     ]);
 
@@ -114,10 +90,6 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
     setSemester(savedSemester ?? 'Comsats 5th Semester');
     setPreferences(prefs);
     setAttendanceThreshold(threshold ?? '75');
-    setCampusLat(lat ?? '');
-    setCampusLon(lon ?? '');
-    setCampusRadius(radius ?? '200');
-    setCampusEnabled(enabled === 'true');
     setCategories(cats ?? 'Food, Transport, Hostel/Mess, Other');
   }, []);
 
@@ -186,102 +158,6 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
     Alert.alert('Course Updated', `Updated "${editSubjectName.trim()}" successfully.`);
   };
 
-  // Geocode address search
-  const handleSearchCampus = async () => {
-    if (!campusSearch.trim()) return Alert.alert('Enter a university or campus address to search');
-    setIsSearchingLocation(true);
-    try {
-      const match = await geocodeCampusAddress(campusSearch);
-      if (match) {
-        setCampusLat(String(match.latitude));
-        setCampusLon(String(match.longitude));
-        setResolvedLocationName(match.displayName);
-        Alert.alert('Location Found', `Resolved: ${match.displayName}\nLatitude: ${match.latitude}\nLongitude: ${match.longitude}`);
-      } else {
-        Alert.alert('Location Not Found', 'Could not find coordinates for that query. Try typing the full university name and city, or enter coordinates manually.');
-      }
-    } catch (e) {
-      Alert.alert('Search Error', e instanceof Error ? e.message : 'Geocoding failed');
-    } finally {
-      setIsSearchingLocation(false);
-    }
-  };
-
-  // Use current GPS location
-  const handleUseCurrentLocation = async () => {
-    setIsLocatingCurrent(true);
-    try {
-      const pos = await getCurrentCampusLocation();
-      if (pos) {
-        setCampusLat(String(pos.latitude));
-        setCampusLon(String(pos.longitude));
-        setResolvedLocationName('Current Device Location');
-        Alert.alert('Current Position Acquired', `Latitude: ${pos.latitude}\nLongitude: ${pos.longitude}`);
-      }
-    } catch (e) {
-      Alert.alert('Location Error', e instanceof Error ? e.message : 'Could not obtain current GPS position');
-    } finally {
-      setIsLocatingCurrent(false);
-    }
-  };
-
-  // Save Campus location & settings
-  const saveCampus = async () => {
-    const lat = Number(campusLat);
-    const lon = Number(campusLon);
-    const radius = Number(campusRadius);
-
-    if (campusLat.trim() && lon && (!Number.isFinite(lat) || Math.abs(lat) > 90 || !Number.isFinite(lon) || Math.abs(lon) > 180)) {
-      return Alert.alert('Enter valid latitude (-90 to 90) and longitude (-180 to 180)');
-    }
-    if (!Number.isFinite(radius) || radius < 50) {
-      return Alert.alert('Enter a valid radius of at least 50 metres');
-    }
-
-    let isEnabledFinal = campusEnabled;
-
-    if (campusEnabled) {
-      if (!campusLat.trim() || !campusLon.trim()) {
-        return Alert.alert('Set campus latitude and longitude before enabling arrival checks');
-      }
-
-      const notifGranted = await configureNotifications();
-      if (!notifGranted) {
-        isEnabledFinal = false;
-        setCampusEnabled(false);
-        Alert.alert('Notification Permission Needed', 'Notifications are disabled. Coordinates were saved, but campus reminders will stay off until notifications are permitted.');
-      }
-
-      const locGranted = await requestCampusLocationPermission();
-      if (!locGranted) {
-        isEnabledFinal = false;
-        setCampusEnabled(false);
-        Alert.alert('Location Permission Needed', 'Location permission was denied. Coordinates were saved, but arrival reminders will stay off until location permission is enabled in Android Settings.');
-      }
-    }
-
-    // Always persist coordinates and settings to SQLite
-    await Promise.all([
-      setSetting('campus_latitude', campusLat.trim()),
-      setSetting('campus_longitude', campusLon.trim()),
-      setSetting('campus_radius', campusRadius.trim() || '200'),
-      setSetting('campus_location_enabled', String(isEnabledFinal)),
-    ]);
-
-    console.log('[Settings] Campus settings successfully saved ->', {
-      lat: campusLat,
-      lon: campusLon,
-      radius: campusRadius,
-      enabled: isEnabledFinal,
-    });
-
-    if (isEnabledFinal) {
-      Alert.alert('Campus Settings Saved', 'Your university coordinates and arrival reminders are active.');
-    } else if (!campusEnabled) {
-      Alert.alert('Campus Coordinates Saved', 'Coordinates saved. Arrival reminders are currently disabled.');
-    }
-  };
-
   const saveReminderSettings = async () => {
     await setReminderPreferences(preferences);
     const [slots, tasks] = await Promise.all([getSlots(), getTasks()]);
@@ -303,7 +179,7 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
   const exportBackup = async () => {
     Alert.alert(
       'Export unencrypted backup?',
-      'The JSON file includes notes, attachments, contacts, expenses, project members, and campus coordinates. Share and store it carefully.',
+      'The JSON file includes notes, attachments, contacts, expenses, and project members. Share and store it carefully.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -425,93 +301,6 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
         <Button theme={theme} label="Save Gemini Key" onPress={() => void saveAI()} />
       </Card>
 
-      {/* CAMPUS LOCATION & REMINDERS */}
-      <Card theme={theme}>
-        <Row
-          theme={theme}
-          title="Campus location & reminders"
-          subtitle="Foreground GPS arrival check; zero background battery drain"
-          right={<MapPin color={theme.colors.positive} />}
-        />
-
-        <Toggle
-          theme={theme}
-          label="Enable campus arrival checks"
-          value={campusEnabled}
-          onChange={setCampusEnabled}
-        />
-
-        {/* Address Search / Geocoding */}
-        <View style={{ gap: 6, marginTop: 4 }}>
-          <Text style={{ fontWeight: '700', color: theme.colors.text }}>Search Campus or Address</Text>
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end' }}>
-            <View style={{ flex: 1 }}>
-              <Input
-                theme={theme}
-                value={campusSearch}
-                onChangeText={setCampusSearch}
-                placeholder="e.g. COMSATS University Islamabad"
-              />
-            </View>
-            <Button
-              theme={theme}
-              label={isSearchingLocation ? 'Searching…' : 'Find'}
-              variant="secondary"
-              disabled={isSearchingLocation}
-              onPress={() => void handleSearchCampus()}
-            />
-          </View>
-        </View>
-
-        {/* Use Current GPS Location */}
-        <Button
-          theme={theme}
-          label={isLocatingCurrent ? 'Detecting current GPS…' : 'Use My Current GPS Position'}
-          variant="secondary"
-          disabled={isLocatingCurrent}
-          onPress={() => void handleUseCurrentLocation()}
-        />
-
-        {resolvedLocationName ? (
-          <Text style={{ color: theme.colors.positive, fontSize: 12, fontWeight: '700' }}>
-            Selected: {resolvedLocationName}
-          </Text>
-        ) : null}
-
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1 }}>
-            <Input
-              theme={theme}
-              label="Latitude"
-              value={campusLat}
-              onChangeText={setCampusLat}
-              keyboardType="numbers-and-punctuation"
-              placeholder="33.6844"
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Input
-              theme={theme}
-              label="Longitude"
-              value={campusLon}
-              onChangeText={setCampusLon}
-              keyboardType="numbers-and-punctuation"
-              placeholder="73.0479"
-            />
-          </View>
-        </View>
-
-        <Input
-          theme={theme}
-          label="Arrival radius (metres)"
-          value={campusRadius}
-          onChangeText={setCampusRadius}
-          keyboardType="number-pad"
-          placeholder="200"
-        />
-
-        <Button theme={theme} label="Save campus location" variant="secondary" onPress={() => void saveCampus()} />
-      </Card>
 
       {/* REMINDER TIMING */}
       <Card theme={theme}>

@@ -31,7 +31,7 @@ const defaults: ReminderPreferences = {
   weeklyDigestHour: 18,
 };
 
-type NotificationType = 'class' | 'task' | 'attendance-action' | 'attendance-snooze' | 'study-plan' | 'weekly-digest' | 'campus';
+type NotificationType = 'class' | 'task' | 'attendance-action' | 'attendance-snooze' | 'study-plan' | 'weekly-digest';
 type AttendanceData = { type: 'attendance-action' | 'attendance-snooze'; slotId: number; subjectId: number; occurrenceDate?: string };
 
 Notifications.setNotificationHandler({
@@ -319,19 +319,5 @@ export async function rescheduleWeeklyDigest(preferences?: ReminderPreferences) 
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date, channelId },
     });
   }
-  return true;
-}
-
-export async function notifyCampusTasks(count: number) {
-  if (!await configureNotifications()) return false;
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: `${count} campus ${count === 1 ? 'task' : 'tasks'} waiting`,
-      body: 'You are near campus. Open StudyHub to see what needs doing.',
-      data: { type: 'campus' },
-      sound: 'default',
-    },
-    trigger: null,
-  });
   return true;
 }

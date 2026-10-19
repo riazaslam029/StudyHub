@@ -26,7 +26,6 @@ export function TasksScreen({ theme, route }: { theme: AppTheme; route: any }) {
   const [priority, setPriority] = useState<Priority>('medium');
   const [due, setDue] = useState<Date | null>(null);
   const [notes, setNotes] = useState('');
-  const [campusReminder, setCampusReminder] = useState(false);
   const [subjectId, setSubjectId] = useState<number | undefined>();
 
   // Manual Edit Task Sheet
@@ -37,7 +36,6 @@ export function TasksScreen({ theme, route }: { theme: AppTheme; route: any }) {
   const [editPriority, setEditPriority] = useState<Priority>('medium');
   const [editDue, setEditDue] = useState<Date | null>(null);
   const [editNotes, setEditNotes] = useState('');
-  const [editCampusReminder, setEditCampusReminder] = useState(false);
   const [editSubjectId, setEditSubjectId] = useState<number | null>(null);
 
   // Voice Note -> Task Flow
@@ -54,7 +52,6 @@ export function TasksScreen({ theme, route }: { theme: AppTheme; route: any }) {
   const [reviewDue, setReviewDue] = useState<Date | null>(null);
   const [reviewSubjectId, setReviewSubjectId] = useState<number | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
-  const [reviewCampusReminder, setReviewCampusReminder] = useState(false);
   const [reviewTranscript, setReviewTranscript] = useState('');
 
   const refresh = useCallback(async () => {
@@ -151,7 +148,6 @@ export function TasksScreen({ theme, route }: { theme: AppTheme; route: any }) {
       setReviewSubjectId(draft.subject_id);
       setReviewDue(draft.due_at ? new Date(draft.due_at) : null);
       setReviewNotes(draft.notes ?? '');
-      setReviewCampusReminder(false);
       setReviewTranscript(draft.raw_transcript);
 
       setIsVoiceRecordingOpen(false);
@@ -165,7 +161,6 @@ export function TasksScreen({ theme, route }: { theme: AppTheme; route: any }) {
       setReviewSubjectId(null);
       setReviewDue(null);
       setReviewNotes('');
-      setReviewCampusReminder(false);
       setReviewTranscript(spokenText);
 
       setIsVoiceRecordingOpen(false);
@@ -204,7 +199,7 @@ export function TasksScreen({ theme, route }: { theme: AppTheme; route: any }) {
       status: 'pending' as const,
       notes: reviewNotes.trim() || (reviewTranscript ? `Transcribed from: "${reviewTranscript}"` : null),
       recurring: null,
-      campus_reminder: reviewCampusReminder ? 1 : 0,
+      campus_reminder: 0,
     };
 
     const id = await saveTask(task);
@@ -237,7 +232,7 @@ export function TasksScreen({ theme, route }: { theme: AppTheme; route: any }) {
       status: 'pending' as const,
       notes,
       recurring: null,
-      campus_reminder: campusReminder ? 1 : 0,
+      campus_reminder: 0,
     };
     const id = await saveTask(task);
     const remindersScheduled = await scheduleDueReminders({
@@ -249,7 +244,6 @@ export function TasksScreen({ theme, route }: { theme: AppTheme; route: any }) {
     setTitle('');
     setDue(null);
     setNotes('');
-    setCampusReminder(false);
     void refresh();
     if (!remindersScheduled && dueAt) {
       Alert.alert('Task saved', 'Allow notifications in Android Settings to receive deadline reminders.');
@@ -263,7 +257,6 @@ export function TasksScreen({ theme, route }: { theme: AppTheme; route: any }) {
     setEditPriority(task.priority);
     setEditDue(task.due_at ? new Date(task.due_at) : null);
     setEditNotes(task.notes ?? '');
-    setEditCampusReminder(task.campus_reminder === 1);
     setEditSubjectId(task.subject_id ?? null);
     setEditOpen(true);
   };
@@ -279,7 +272,7 @@ export function TasksScreen({ theme, route }: { theme: AppTheme; route: any }) {
       subject_id: editSubjectId,
       due_at: dueAt,
       notes: editNotes.trim() || null,
-      campus_reminder: editCampusReminder ? 1 : 0,
+      campus_reminder: 0,
     });
     const updatedTasks = await getTasks();
     await rescheduleAllDueReminders(updatedTasks);
@@ -466,7 +459,7 @@ export function TasksScreen({ theme, route }: { theme: AppTheme; route: any }) {
                 multiline
               />
               <Text style={{ color: theme.colors.muted, fontSize: 11 }}>
-                You can edit or type words directly above before tapping 'Done & Review'.
+                {"You can edit or type words directly above before tapping 'Done & Review'."}
               </Text>
             </View>
 
@@ -632,33 +625,6 @@ export function TasksScreen({ theme, route }: { theme: AppTheme; route: any }) {
               multiline
             />
 
-            {/* Campus Reminder Toggle */}
-            <Pressable
-              onPress={() => setReviewCampusReminder(!reviewCampusReminder)}
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                paddingVertical: 8,
-              }}
-            >
-              <Text style={{ fontWeight: '700', color: theme.colors.text }}>
-                Remind me when I reach campus
-              </Text>
-              <View
-                style={{
-                  width: 42,
-                  height: 24,
-                  borderRadius: 12,
-                  padding: 3,
-                  alignItems: reviewCampusReminder ? 'flex-end' : 'flex-start',
-                  backgroundColor: reviewCampusReminder ? theme.colors.accent : theme.colors.border,
-                }}
-              >
-                <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff' }} />
-              </View>
-            </Pressable>
-
             <View style={{ gap: 10, marginTop: 8 }}>
               <Button theme={theme} label="Confirm & Save Task" onPress={() => void confirmAndSaveVoiceTask()} />
               <Button theme={theme} label="Cancel" variant="secondary" onPress={() => setReviewOpen(false)} />
@@ -680,29 +646,6 @@ export function TasksScreen({ theme, route }: { theme: AppTheme; route: any }) {
           <Choice label="Priority" values={priorities} selected={priority} set={(value) => setPriority(value as Priority)} theme={theme} />
           <DateField theme={theme} label="Due date & time (optional)" value={due} onChange={setDue} />
           <Input theme={theme} label="Notes" value={notes} onChangeText={setNotes} placeholder="Requirements or next step" multiline />
-          <Pressable
-            onPress={() => setCampusReminder(!campusReminder)}
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              paddingVertical: 8,
-            }}
-          >
-            <Text style={{ fontWeight: '700', color: theme.colors.text }}>Remind me when I reach campus</Text>
-            <View
-              style={{
-                width: 42,
-                height: 24,
-                borderRadius: 12,
-                padding: 3,
-                alignItems: campusReminder ? 'flex-end' : 'flex-start',
-                backgroundColor: campusReminder ? theme.colors.accent : theme.colors.border,
-              }}
-            >
-              <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff' }} />
-            </View>
-          </Pressable>
           <Text style={{ fontWeight: '700', color: theme.colors.text }}>Course (optional)</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
             {subjects.map((subject) => (
@@ -739,29 +682,6 @@ export function TasksScreen({ theme, route }: { theme: AppTheme; route: any }) {
           <Choice label="Priority" values={priorities} selected={editPriority} set={(value) => setEditPriority(value as Priority)} theme={theme} />
           <DateField theme={theme} label="Due date & time (optional)" value={editDue} onChange={setEditDue} />
           <Input theme={theme} label="Notes" value={editNotes} onChangeText={setEditNotes} placeholder="Requirements or notes" multiline />
-          <Pressable
-            onPress={() => setEditCampusReminder(!editCampusReminder)}
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              paddingVertical: 8,
-            }}
-          >
-            <Text style={{ fontWeight: '700', color: theme.colors.text }}>Remind me when I reach campus</Text>
-            <View
-              style={{
-                width: 42,
-                height: 24,
-                borderRadius: 12,
-                padding: 3,
-                alignItems: editCampusReminder ? 'flex-end' : 'flex-start',
-                backgroundColor: editCampusReminder ? theme.colors.accent : theme.colors.border,
-              }}
-            >
-              <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff' }} />
-            </View>
-          </Pressable>
           <Text style={{ fontWeight: '700', color: theme.colors.text }}>Course (optional)</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
             <Pressable
