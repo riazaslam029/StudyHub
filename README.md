@@ -3,7 +3,7 @@
 <div align="center">
 
 ![StudyHub Platform](https://img.shields.io/badge/Platform-Android%20%7C%20iOS%20%28Universal%29-6366F1?style=for-the-badge&logo=android&logoColor=white)
-[![Download APK](https://img.shields.io/badge/Download-Pitch--Ready%20APK-brightgreen?style=for-the-badge&logo=android&logoColor=white)](https://expo.dev/artifacts/eas/eL6CBPEd2AdJLP6WWhIHU-MSGlUTcKkHmuQ0C3qb1uM.apk)
+[![Download APK](https://img.shields.io/badge/Download-Pitch--Ready%20APK-brightgreen?style=for-the-badge&logo=android&logoColor=white)](https://expo.dev/artifacts/eas/qkOTXR8RXNmMygCrzPHPnDXJ4JzjnRPJqMUWwsj7C6Y.apk)
 [![Expo SDK](https://img.shields.io/badge/Expo-SDK%2054-000020?style=for-the-badge&logo=expo&logoColor=white)](https://expo.dev)
 [![React Native](https://img.shields.io/badge/React%20Native-0.81-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactnative.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
@@ -14,7 +14,7 @@
 **An intelligent, offline-capable academic operating system designed for university and college students.**  
 *Combines local SQLite persistence with Google Gemini AI for smart schedule parsing, voice task logging, and grounded exam preparation.*
 
-[📥 Download Pitch-Ready APK](https://expo.dev/artifacts/eas/eL6CBPEd2AdJLP6WWhIHU-MSGlUTcKkHmuQ0C3qb1uM.apk) • [Features](#-core-features) • [Gemini Workflows](#-google-gemini-ai-features) • [Local vs. Cloud](#-local-vs-cloud-data-architecture) • [Security](#-api-key-setup--security) • [Tech Stack](#-technology-stack) • [Building APK](#-building-and-installation)
+[📥 Download Pitch-Ready APK](https://expo.dev/artifacts/eas/qkOTXR8RXNmMygCrzPHPnDXJ4JzjnRPJqMUWwsj7C6Y.apk) • [Features](#-core-features) • [Gemini Workflows](#-google-gemini-ai-features) • [Local vs. Cloud](#-local-vs-cloud-data-architecture) • [Security](#-api-key-setup--security) • [Tech Stack](#-technology-stack) • [Building APK](#-building-and-installation)
 
 </div>
 
@@ -213,8 +213,8 @@ StudyHub/
 
 ### 📥 Direct APK Download (Pitch Ready)
 You can directly download and install the pitch-ready standalone APK package:
-- **Direct APK Download**: [Download StudyHub APK](https://expo.dev/artifacts/eas/eL6CBPEd2AdJLP6WWhIHU-MSGlUTcKkHmuQ0C3qb1uM.apk)
-- **EAS Build Dashboard**: [View Verified Build on Expo EAS](https://expo.dev/accounts/riaz7/projects/studyhub/builds/48ba1806-99ab-42eb-9701-30487fce5730)
+- **Direct APK Download**: [Download StudyHub APK](https://expo.dev/artifacts/eas/qkOTXR8RXNmMygCrzPHPnDXJ4JzjnRPJqMUWwsj7C6Y.apk)
+- **EAS Build Dashboard**: [View Verified Build on Expo EAS](https://expo.dev/accounts/riaz7/projects/studyhub/builds/4e6fb332-a434-4381-ae91-f61bb4486c40)
 
 ### 🔨 Building Standalone Android APK with EAS
 StudyHub is preconfigured with an EAS build profile for creating standalone `.apk` files without needing Android Studio installed locally:
