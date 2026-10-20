@@ -9,7 +9,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#25245A"
+      "backgroundColor": "#1A1E1D"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -23,7 +23,7 @@
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#25245A"
+        "backgroundColor": "#1A1E1D"
       }
     },
     "plugins": [
