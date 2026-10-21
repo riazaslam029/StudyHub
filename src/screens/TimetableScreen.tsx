@@ -10,6 +10,238 @@ import { prepareImageForGemini } from '../image';
 import { rescheduleAllClassReminders, rescheduleAttendancePrompts, rescheduleClassReminder } from '../notifications';
 import { AppTheme } from '../theme';
 import { Slot, Subject } from '../types';
-const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-export function TimetableScreen({theme,navigation}:{theme:AppTheme;navigation:any}){const [day,setDay]=useState(new Date().getDay()),[slots,setSlots]=useState<Slot[]>([]),[subjects,setSubjects]=useState<Subject[]>([]),[open,setOpen]=useState(false),[subjectId,setSubjectId]=useState<number|undefined>(),[start,setStart]=useState('09:00'),[end,setEnd]=useState('10:30'),[room,setRoom]=useState(''),[busy,setBusy]=useState(false);const refresh=useCallback(async()=>{setSlots(await getSlots(day));setSubjects(await getSubjects())},[day]);useFocusEffect(useCallback(()=>{void refresh()},[refresh]));const create=async()=>{if(!subjectId)return Alert.alert('Choose a subject');if(start>=end)return Alert.alert('End time must be after start time');const subject=subjects.find(s=>s.id===subjectId)!;const result=await addSlot({subject_id:subjectId,day_of_week:day,start_time:start,end_time:end,room,teacher:subject.teacher});await rescheduleClassReminder({id:Number(result.lastInsertRowId),subject_id:subjectId,day_of_week:day,start_time:start,end_time:end,room,subject_name:subject.name,subject_color:subject.color});await rescheduleAttendancePrompts(await getSlots());setOpen(false);await refresh()};const pick=async(camera:boolean)=>{const permission=camera?await ImagePicker.requestCameraPermissionsAsync():await ImagePicker.requestMediaLibraryPermissionsAsync();if(!permission.granted)return Alert.alert('Permission needed',`Allow ${camera?'camera':'photo'} access to import your timetable.`);const result=camera?await ImagePicker.launchCameraAsync({quality:.9}):await ImagePicker.launchImageLibraryAsync({mediaTypes:['images'],quality:.9});const asset=result.assets?.[0];if(result.canceled||!asset)return;setBusy(true);try{const prepared=await prepareImageForGemini(asset.uri);const rows=await parseTimetableImage(prepared.base64,prepared.mimeType);navigation.navigate('TimetableReview',{rows});}catch(error){Alert.alert('Could not read timetable',error instanceof Error?error.message:'Try a clearer photo or add classes manually.')}finally{setBusy(false)}};const chooseImport=()=>Alert.alert('Send timetable image to Gemini?','The selected image will be compressed and sent to Google Gemini only to create an editable draft. Nothing is saved until you confirm the review.',[{text:'Cancel',style:'cancel'},{text:'Continue',onPress:()=>Alert.alert('Choose image source','Take a clear photo or select one from your gallery.',[{text:'Cancel',style:'cancel'},{text:'Take photo',onPress:()=>void pick(true)},{text:'Gallery',onPress:()=>void pick(false)}])}]);return <Screen theme={theme}><Heading theme={theme} eyebrow="Weekly rhythm">Timetable</Heading><Card theme={theme} style={{backgroundColor:theme.colors.accentSoft,borderColor:theme.colors.accentSoft}}><View style={{flexDirection:'row',alignItems:'center',gap:8}}><Sparkles size={18} color={theme.colors.accent}/><Text style={{fontWeight:'800',color:theme.colors.text}}>AI timetable import</Text></View><Text style={{color:theme.colors.muted,fontSize:13,lineHeight:18}}>Take a photo or choose one from your gallery. You’ll review and edit every detected class before anything is saved.</Text>{busy?<View style={{flexDirection:'row',alignItems:'center',gap:10,paddingVertical:8}}><ActivityIndicator color={theme.colors.accent}/><Text style={{color:theme.colors.muted}}>Reading your timetable…</Text></View>:<Button theme={theme} label="Import timetable image" onPress={chooseImport}/>}</Card><View style={{flexDirection:'row',gap:6}}>{days.map((d,i)=><Pressable key={d} onPress={()=>setDay(i)} style={{flex:1,paddingVertical:10,alignItems:'center',borderRadius:11,backgroundColor:day===i?theme.colors.accent:theme.colors.surfaceSoft}}><Text style={{fontSize:11,fontWeight:'800',color:day===i?'#fff':theme.colors.text}}>{d}</Text></Pressable>)}</View><Text style={{color:theme.colors.muted,fontSize:13}}>Reminder timing follows your Settings preference.</Text>{slots.length?<Card theme={theme}>{slots.map(s=><Row key={s.id} theme={theme} title={s.subject_name??'Class'} subtitle={`${s.start_time} – ${s.end_time}${s.room?` · ${s.room}`:''}`} right={<Pressable onPress={async()=>{await deleteSlot(s.id);await rescheduleAllClassReminders(await getSlots());await rescheduleAttendancePrompts(await getSlots());await refresh()}}><Trash2 size={18} color={theme.colors.danger}/></Pressable>}/>)}</Card>:<Empty theme={theme} title="A clear day" detail="Import an image or add this day’s first class manually."/>}<Button theme={theme} label="Add class manually" variant="secondary" onPress={()=>setOpen(true)}/><Sheet visible={open} onClose={()=>setOpen(false)} title="Add a class" theme={theme}><View style={{gap:12}}><Text style={{fontWeight:'700',color:theme.colors.text}}>Course</Text><View style={{flexDirection:'row',flexWrap:'wrap',gap:7}}>{subjects.map(s=><Pressable key={s.id} onPress={()=>setSubjectId(s.id)} style={{padding:9,borderRadius:10,backgroundColor:subjectId===s.id?s.color:theme.colors.surfaceSoft}}><Text style={{color:subjectId===s.id?'#fff':theme.colors.text,fontWeight:'700'}}>{s.name}</Text></Pressable>)}</View><View style={{flexDirection:'row',gap:12}}><TimeField theme={theme} label="Start" value={start} onChange={setStart}/><TimeField theme={theme} label="End" value={end} onChange={setEnd}/></View><Input theme={theme} label="Room / location" value={room} onChangeText={setRoom} placeholder="CS-201"/><Button theme={theme} label="Save class & reminder" onPress={()=>void create()}/></View></Sheet></Screen>}
+const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+export function TimetableScreen({ theme, navigation }: { theme: AppTheme; navigation: any }) {
+  const [day, setDay] = useState(new Date().getDay());
+  const [slots, setSlots] = useState<Slot[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [open, setOpen] = useState(false);
+  const [subjectId, setSubjectId] = useState<number | undefined>();
+  const [start, setStart] = useState('09:00');
+  const [end, setEnd] = useState('10:30');
+  const [room, setRoom] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    const [daySlots, allSubjects] = await Promise.all([getSlots(day), getSubjects()]);
+    setSlots(daySlots);
+    setSubjects(allSubjects);
+  }, [day]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+    }, [refresh])
+  );
+
+  const create = async () => {
+    if (!subjectId) return Alert.alert('Choose a subject');
+    if (start >= end) return Alert.alert('End time must be after start time');
+    const subject = subjects.find((s) => s.id === subjectId);
+    if (!subject) return Alert.alert('Subject not found');
+
+    try {
+      // 1. Insert slot into local SQLite immediately
+      const result = await addSlot({
+        subject_id: subjectId,
+        day_of_week: day,
+        start_time: start,
+        end_time: end,
+        room,
+        teacher: subject.teacher,
+      });
+
+      // 2. Close modal and refresh UI immediately without blocking
+      setOpen(false);
+      setRoom('');
+      await refresh();
+
+      // 3. Reschedule notifications in background for instant responsiveness
+      void (async () => {
+        try {
+          await rescheduleClassReminder({
+            id: Number(result.lastInsertRowId),
+            subject_id: subjectId,
+            day_of_week: day,
+            start_time: start,
+            end_time: end,
+            room,
+            subject_name: subject.name,
+            subject_color: subject.color,
+          });
+          const allSlots = await getSlots();
+          await rescheduleAttendancePrompts(allSlots);
+        } catch (e) {
+          console.warn('[Timetable] Reminder scheduling in background:', e);
+        }
+      })();
+    } catch (error) {
+      Alert.alert('Could not save class', error instanceof Error ? error.message : 'Please try again.');
+    }
+  };
+
+  const pick = async (camera: boolean) => {
+    const permission = camera
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      return Alert.alert('Permission needed', `Allow ${camera ? 'camera' : 'photo'} access to import your timetable.`);
+    }
+
+    const result = camera
+      ? await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: false })
+      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+
+    const asset = result.assets?.[0];
+    if (result.canceled || !asset) return;
+
+    setBusy(true);
+    try {
+      // Fast image compression & resizing (<150KB payload)
+      const prepared = await prepareImageForGemini(asset.uri);
+      const rows = await parseTimetableImage(prepared.base64, prepared.mimeType);
+      navigation.navigate('TimetableReview', { rows });
+    } catch (error) {
+      Alert.alert(
+        'Could not read timetable',
+        error instanceof Error ? error.message : 'Try a clearer photo or add classes manually.'
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const chooseImport = () =>
+    Alert.alert(
+      'Send timetable image to Gemini?',
+      'The selected image will be optimized and sent to Google Gemini only to create an editable draft. Nothing is saved until you confirm the review.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          onPress: () =>
+            Alert.alert('Choose image source', 'Take a clear photo or select one from your gallery.', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Take photo', onPress: () => void pick(true) },
+              { text: 'Gallery', onPress: () => void pick(false) },
+            ]),
+        },
+      ]
+    );
+
+  const removeSlot = async (slotId: number) => {
+    await deleteSlot(slotId);
+    await refresh();
+    void (async () => {
+      try {
+        const allSlots = await getSlots();
+        await rescheduleAllClassReminders(allSlots);
+        await rescheduleAttendancePrompts(allSlots);
+      } catch (e) {
+        console.warn('[Timetable] Reminder cleanup warning:', e);
+      }
+    })();
+  };
+
+  return (
+    <Screen theme={theme}>
+      <Heading theme={theme} eyebrow="Weekly rhythm">
+        Timetable
+      </Heading>
+
+      <Card theme={theme} style={{ backgroundColor: theme.colors.accentSoft, borderColor: theme.colors.accentSoft }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Sparkles size={18} color={theme.colors.accent} />
+          <Text style={{ fontWeight: '800', color: theme.colors.text }}>AI timetable import</Text>
+        </View>
+        <Text style={{ color: theme.colors.muted, fontSize: 13, lineHeight: 18 }}>
+          Take a photo or choose one from your gallery. Optimized for rapid Gemini processing. You’ll review and edit every detected class before anything is saved.
+        </Text>
+        {busy ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}>
+            <ActivityIndicator color={theme.colors.accent} />
+            <Text style={{ color: theme.colors.muted }}>Reading timetable with Gemini…</Text>
+          </View>
+        ) : (
+          <Button theme={theme} label="Import timetable image" onPress={chooseImport} />
+        )}
+      </Card>
+
+      <View style={{ flexDirection: 'row', gap: 6 }}>
+        {days.map((d, i) => (
+          <Pressable
+            key={d}
+            onPress={() => setDay(i)}
+            style={{
+              flex: 1,
+              paddingVertical: 10,
+              alignItems: 'center',
+              borderRadius: 11,
+              backgroundColor: day === i ? theme.colors.accent : theme.colors.surfaceSoft,
+            }}
+          >
+            <Text style={{ fontSize: 11, fontWeight: '800', color: day === i ? '#fff' : theme.colors.text }}>
+              {d}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={{ color: theme.colors.muted, fontSize: 13 }}>Reminder timing follows your Settings preference.</Text>
+
+      {slots.length ? (
+        <Card theme={theme}>
+          {slots.map((s) => (
+            <Row
+              key={s.id}
+              theme={theme}
+              title={s.subject_name ?? 'Class'}
+              subtitle={`${s.start_time} – ${s.end_time}${s.room ? ` · ${s.room}` : ''}`}
+              right={
+                <Pressable onPress={() => void removeSlot(s.id)}>
+                  <Trash2 size={18} color={theme.colors.danger} />
+                </Pressable>
+              }
+            />
+          ))}
+        </Card>
+      ) : (
+        <Empty theme={theme} title="A clear day" detail="Import an image or add this day’s first class manually." />
+      )}
+
+      <Button theme={theme} label="Add class manually" variant="secondary" onPress={() => setOpen(true)} />
+
+      <Sheet visible={open} onClose={() => setOpen(false)} title="Add a class" theme={theme}>
+        <View style={{ gap: 12 }}>
+          <Text style={{ fontWeight: '700', color: theme.colors.text }}>Course</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+            {subjects.map((s) => (
+              <Pressable
+                key={s.id}
+                onPress={() => setSubjectId(s.id)}
+                style={{
+                  padding: 9,
+                  borderRadius: 10,
+                  backgroundColor: subjectId === s.id ? s.color : theme.colors.surfaceSoft,
+                }}
+              >
+                <Text style={{ color: subjectId === s.id ? '#fff' : theme.colors.text, fontWeight: '700' }}>
+                  {s.name}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <TimeField theme={theme} label="Start" value={start} onChange={setStart} />
+            <TimeField theme={theme} label="End" value={end} onChange={setEnd} />
+          </View>
+          <Input theme={theme} label="Room / location" value={room} onChangeText={setRoom} placeholder="CS-201" />
+          <Button theme={theme} label="Save class & reminder" onPress={() => void create()} />
+        </View>
+      </Sheet>
+    </Screen>
+  );
+}
