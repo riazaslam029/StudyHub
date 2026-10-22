@@ -45,7 +45,6 @@ import {
   saveNote,
   updateNote,
 } from '../db';
-import { prepareImageForGemini } from '../image';
 import { AppTheme } from '../theme';
 import { Note, NoteBlock, Subject } from '../types';
 import { VoiceInputButton } from '../voice';
@@ -354,21 +353,14 @@ export function NotesScreen({ theme, navigation }: { theme: AppTheme; navigation
         extracted = await FileSystem.readAsStringAsync(att.file_path, {
           encoding: FileSystem.EncodingType.UTF8,
         });
-      } else if (isImage) {
-        // Fast compression & resizing for images before Gemini OCR
-        const prepared = await prepareImageForGemini(att.file_path);
-        extracted = await extractTextFromFile({
-          base64: prepared.base64,
-          mimeType: prepared.mimeType,
-          fileName: att.original_filename,
-        });
-      } else if (isPdf) {
+      } else if (isImage || isPdf) {
         const base64 = await FileSystem.readAsStringAsync(att.file_path, {
           encoding: FileSystem.EncodingType.Base64,
         });
+        const mimeType = isPdf ? 'application/pdf' : 'image/jpeg';
         extracted = await extractTextFromFile({
           base64,
-          mimeType: 'application/pdf',
+          mimeType,
           fileName: att.original_filename,
         });
       } else {

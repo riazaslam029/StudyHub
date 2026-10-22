@@ -5,11 +5,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Eye, EyeOff, KeyRound, Pencil, Trash2 } from 'lucide-react-native';
 import {
-  getActiveGeminiModel,
   getApiKey,
-  getModelPreference,
   setApiKey,
-  setModelPreference,
   testGeminiConnection,
 } from '../ai';
 import { Button, Card, Heading, Input, Row, Screen, Sheet } from '../components';
@@ -43,8 +40,6 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
   const [geminiKey, setGeminiKey] = useState('');
   const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [testingGemini, setTestingGemini] = useState(false);
-  const [activeModel, setActiveModel] = useState('gemini-2.0-flash');
-  const [modelPref, setModelPref] = useState('auto');
 
   // Edit Subject Modal
   const [editSubjectOpen, setEditSubjectOpen] = useState(false);
@@ -81,8 +76,6 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
       prefs,
       threshold,
       cats,
-      currActiveModel,
-      savedModelPref,
     ] = await Promise.all([
       getApiKey(),
       getSubjects(),
@@ -90,8 +83,6 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
       getReminderPreferences(),
       getSetting('attendance_threshold'),
       getSetting('expense_categories'),
-      getActiveGeminiModel(),
-      getModelPreference(),
     ]);
 
     setGeminiKey(key ?? '');
@@ -100,8 +91,6 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
     setPreferences(prefs);
     setAttendanceThreshold(threshold ?? '75');
     setCategories(cats ?? 'Food, Transport, Hostel/Mess, Other');
-    setActiveModel(currActiveModel);
-    setModelPref(savedModelPref ?? 'auto');
   }, []);
 
   useEffect(() => {
@@ -112,13 +101,10 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
   const saveAI = async () => {
     try {
       await setApiKey(geminiKey);
-      await setModelPreference(modelPref === 'auto' ? null : modelPref);
-      const updatedModel = await getActiveGeminiModel();
-      setActiveModel(updatedModel);
       Alert.alert(
         'AI settings saved',
         geminiKey.trim()
-          ? `Google Gemini API key configured.\nActive Model: ${updatedModel}\nAll AI features (OCR, voice-to-task, quizzes) ready.`
+          ? 'Google Gemini API key successfully configured for all AI features.'
           : 'Google Gemini key cleared.'
       );
     } catch (error) {
@@ -135,11 +121,7 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
     try {
       const res = await testGeminiConnection(geminiKey);
       if (res.success) {
-        if (res.model) setActiveModel(res.model);
-        Alert.alert(
-          'Gemini Connected Successfully',
-          `Response from Google Gemini:\n\n${res.message}\n\nAll StudyHub features (timetable OCR, voice note tasks, flashcards, study assistant) are active and supported!`
-        );
+        Alert.alert('Gemini Connected Successfully', `Response from Google Gemini:\n\n${res.message}`);
       } else {
         Alert.alert('Gemini Connection Failed', res.message);
       }
@@ -302,49 +284,6 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
             secureTextEntry={!showGeminiKey}
             placeholder="AIzaSy..."
           />
-
-          {/* Active Model Indicator & Model Preference */}
-          <View style={{ marginTop: 4, padding: 10, borderRadius: 10, backgroundColor: theme.colors.surfaceSoft, gap: 6 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: theme.colors.text }}>Active Model Engine</Text>
-              <View style={{ backgroundColor: theme.colors.accentSoft, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 }}>
-                <Text style={{ fontSize: 11, fontWeight: '800', color: theme.colors.accent }}>{activeModel}</Text>
-              </View>
-            </View>
-            <Text style={{ fontSize: 11, color: theme.colors.muted, lineHeight: 15 }}>
-              Compatible with all Google Gemini keys (2.5, 2.0, 1.5, 3.x, AI Studio, Vertex). Automatic cascade fallback ensures your requests succeed instantly.
-            </Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-              {[
-                { id: 'auto', label: 'Auto (Fastest)' },
-                { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-                { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
-                { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
-                { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
-              ].map((m) => {
-                const isSelected = modelPref === m.id;
-                return (
-                  <Pressable
-                    key={m.id}
-                    onPress={() => setModelPref(m.id)}
-                    style={{
-                      paddingVertical: 5,
-                      paddingHorizontal: 9,
-                      borderRadius: 8,
-                      backgroundColor: isSelected ? theme.colors.accent : theme.colors.surface,
-                      borderWidth: 1,
-                      borderColor: isSelected ? theme.colors.accent : theme.colors.border,
-                    }}
-                  >
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: isSelected ? '#fff' : theme.colors.text }}>
-                      {m.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-
           <Text style={{ fontSize: 12, color: theme.colors.muted }}>
             Get your free API key at ai.google.dev (Google AI Studio). Powers speech-to-task parsing, exam prep, timetable OCR, and study assistance.
           </Text>
@@ -359,7 +298,7 @@ export function SettingsScreen({ theme }: { theme: AppTheme }) {
           </View>
         </View>
 
-        <Button theme={theme} label="Save Gemini Settings" onPress={() => void saveAI()} />
+        <Button theme={theme} label="Save Gemini Key" onPress={() => void saveAI()} />
       </Card>
 
 

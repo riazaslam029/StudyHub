@@ -5,122 +5,29 @@ export type AIProvider = 'gemini';
 export type AIResult<T = string> = { data: T; provider: AIProvider };
 
 const GEMINI_KEY = 'studyhub_gemini_api_key';
-const GEMINI_CACHED_MODEL_KEY = 'studyhub_gemini_cached_model';
-const GEMINI_MODEL_PREF_KEY = 'studyhub_gemini_model_preference';
 
-// Default and comprehensive prioritized candidates for Google Gemini
-// Covers Gemini 2.5, 2.0, 1.5, 3.x preview, flash-lite, flash-8b, and pro models
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
-
-export const GEMINI_CANDIDATES = [
-  // High-speed Flash models (optimal for mobile & OCR)
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-latest',
+// Model configuration and candidate lists
+const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
+const GEMINI_CANDIDATES = [
   'gemini-2.0-flash',
-  'gemini-2.0-flash-001',
-  'gemini-2.0-flash-lite',
-  'gemini-2.0-flash-lite-preview-02-05',
+  'gemini-2.5-flash',
   'gemini-1.5-flash',
-  'gemini-1.5-flash-latest',
-  'gemini-1.5-flash-8b',
-  'gemini-1.5-flash-8b-latest',
-  // Preview / Next-Gen models (Gemini 3 / Experimental)
-  'gemini-3.0-flash',
-  'gemini-3-flash',
-  'gemini-3.0-pro',
-  'gemini-3-pro',
-  'gemini-2.0-flash-exp',
-  'gemini-2.0-pro-exp-02-05',
-  'gemini-exp-1206',
-  // Pro models (higher capability fallback)
-  'gemini-2.5-pro',
+  'gemini-2.0-flash-lite',
   'gemini-1.5-pro',
-  'gemini-1.5-pro-latest',
-  'gemini-1.0-pro',
 ];
 
 let cachedGeminiModel: string | null = null;
 
-async function setCachedModel(model: string) {
-  cachedGeminiModel = model;
-  try {
-    await SecureStore.setItemAsync(GEMINI_CACHED_MODEL_KEY, model);
-  } catch {
-    // ignore secure store write failure
-  }
-}
-
-export async function getActiveGeminiModel(): Promise<string> {
+export async function discoverGeminiModel(key: string): Promise<string> {
   if (cachedGeminiModel) return cachedGeminiModel;
-  try {
-    const saved = await SecureStore.getItemAsync(GEMINI_CACHED_MODEL_KEY);
-    if (saved && saved.trim()) {
-      cachedGeminiModel = saved.trim();
-      return cachedGeminiModel;
-    }
-  } catch {
-    // continue
-  }
-  return DEFAULT_GEMINI_MODEL;
-}
-
-export async function getModelPreference(): Promise<string | null> {
-  try {
-    const pref = await SecureStore.getItemAsync(GEMINI_MODEL_PREF_KEY);
-    return pref?.trim() || null;
-  } catch {
-    return null;
-  }
-}
-
-export async function setModelPreference(preference: string | null): Promise<void> {
-  try {
-    if (preference && preference.trim() && preference !== 'auto') {
-      await SecureStore.setItemAsync(GEMINI_MODEL_PREF_KEY, preference.trim());
-      await setCachedModel(preference.trim());
-    } else {
-      await SecureStore.deleteItemAsync(GEMINI_MODEL_PREF_KEY);
-      cachedGeminiModel = null;
-    }
-  } catch (e) {
-    console.warn('[Gemini] Could not save model preference:', e);
-  }
-}
-
-export async function discoverGeminiModel(key: string, forceRefresh = false): Promise<string> {
-  // 1. Honor explicit user preference if configured
-  const userPref = await getModelPreference();
-  if (userPref && userPref !== 'auto') {
-    cachedGeminiModel = userPref;
-    return userPref;
-  }
-
-  // 2. Use in-memory or persisted cache to avoid 1-2s network discovery latency
-  if (!forceRefresh) {
-    if (cachedGeminiModel) return cachedGeminiModel;
-    try {
-      const persisted = await SecureStore.getItemAsync(GEMINI_CACHED_MODEL_KEY);
-      if (persisted && persisted.trim()) {
-        cachedGeminiModel = persisted.trim();
-        return cachedGeminiModel;
-      }
-    } catch {
-      // continue to dynamic discovery
-    }
-  }
-
-  // 3. Dynamic discovery via Google Generative Language v1beta ListModels
   try {
     const res = await timedFetch(
       `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`,
       { method: 'GET' },
-      6000 // fast 6s timeout
+      10000
     );
-
     if (res.ok) {
-      const data = (await res.json()) as {
-        models?: { name: string; supportedGenerationMethods?: string[] }[];
-      };
+      const data = (await res.json()) as { models?: { name: string; supportedGenerationMethods?: string[] }[] };
       const available = (data.models || [])
         .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
         .map((m) => m.name.replace(/^models\//, ''));
@@ -129,34 +36,24 @@ export async function discoverGeminiModel(key: string, forceRefresh = false): Pr
 
       // Match against prioritized candidate list
       for (const cand of GEMINI_CANDIDATES) {
-        const match = available.find((m) => m === cand || m.startsWith(`${cand}-`));
-        if (match) {
-          console.log(`[Gemini] Matched priority model: ${match}`);
-          await setCachedModel(match);
-          return match;
+        if (available.includes(cand)) {
+          console.log(`[Gemini] Selected model: ${cand}`);
+          cachedGeminiModel = cand;
+          return cand;
         }
       }
 
-      // If no exact candidate matched, pick any available flash model
-      const flash = available.find((m) => m.toLowerCase().includes('flash'));
+      // If no exact match, pick any available flash model or first available
+      const flash = available.find((m) => m.toLowerCase().includes('flash')) || available[0];
       if (flash) {
-        console.log(`[Gemini] Matched available flash model: ${flash}`);
-        await setCachedModel(flash);
+        console.log(`[Gemini] Fallback to available model: ${flash}`);
+        cachedGeminiModel = flash;
         return flash;
-      }
-
-      // Or any available model that supports generation
-      const anyModel = available[0];
-      if (anyModel) {
-        console.log(`[Gemini] Fallback to available model: ${anyModel}`);
-        await setCachedModel(anyModel);
-        return anyModel;
       }
     }
   } catch (error) {
-    console.warn('[Gemini] Model discovery query failed or restricted, falling back to candidate hierarchy:', error);
+    console.warn('[Gemini] Model discovery failed, using default:', error);
   }
-
   return DEFAULT_GEMINI_MODEL;
 }
 
@@ -168,7 +65,6 @@ type AIOptions<T> = {
   image?: { base64: string; mimeType: string };
   validate?: (value: unknown) => T;
   timeoutMs?: number;
-  maxTokens?: number;
 };
 
 export class ProviderError extends Error {
@@ -186,11 +82,6 @@ async function storeKey(key: string, value: string) {
     await SecureStore.deleteItemAsync(key);
   }
   cachedGeminiModel = null;
-  try {
-    await SecureStore.deleteItemAsync(GEMINI_CACHED_MODEL_KEY);
-  } catch {
-    // ignore
-  }
   const check = await SecureStore.getItemAsync(key);
   console.log(`[SecureStore] Key "${key}" updated -> stored length: ${check?.length ?? 0}`);
 }
@@ -240,7 +131,6 @@ async function executeGeminiRequest(modelName: string, prompt: string, key: stri
 
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(key)}`;
   const systemText = options.system ?? 'You are StudyHub, a clear and practical study assistant.';
-  const maxOutputTokens = options.maxTokens ?? (options.fast ? 800 : 2500);
 
   const response = await timedFetch(
     endpoint,
@@ -259,12 +149,11 @@ async function executeGeminiRequest(modelName: string, prompt: string, key: stri
         ],
         generationConfig: {
           temperature: options.json ? 0 : 0.35,
-          maxOutputTokens,
           ...(options.json ? { responseMimeType: 'application/json' } : {}),
         },
       }),
     },
-    options.timeoutMs ?? (options.fast ? 15000 : 35000)
+    options.timeoutMs ?? 30000
   );
 
   const rawText = await response.text();
@@ -297,24 +186,19 @@ async function requestGemini(prompt: string, key: string, options: AIOptions<unk
     const isModelError =
       error instanceof ProviderError &&
       (error.status === 404 ||
-        error.status === 400 ||
-        error.status === 429 ||
-        error.status === 503 ||
         error.message.includes('not found') ||
         error.message.includes('no longer available') ||
-        error.message.includes('not supported for generateContent') ||
-        error.message.includes('RESOURCE_EXHAUSTED') ||
-        error.message.includes('PERMISSION_DENIED') ||
-        error.message.includes('INVALID_ARGUMENT'));
+        error.message.includes('not supported for generateContent'));
 
     if (isModelError) {
-      console.warn(`[Gemini] Model "${primaryModel}" encountered issue (${(error as Error).message}). Retrying candidate models...`);
+      console.warn(`[Gemini] Model ${primaryModel} failed. Clearing cache and trying alternatives...`);
+      cachedGeminiModel = null;
       for (const cand of GEMINI_CANDIDATES) {
         if (cand !== primaryModel) {
           try {
-            console.log(`[Gemini] Retrying with candidate model: ${cand}`);
+            console.log(`[Gemini] Retrying with candidate: ${cand}`);
             const result = await executeGeminiRequest(cand, prompt, key, options);
-            await setCachedModel(cand);
+            cachedGeminiModel = cand;
             return result;
           } catch {
             // continue next candidate
@@ -366,7 +250,7 @@ export async function askAI<T = string>(prompt: string, options: AIOptions<T> = 
       console.warn('[Gemini] Request failed:', errorMsg);
       errors.push(errorMsg);
 
-      if (error instanceof ProviderError && error.status && [401, 403].includes(error.status) && !error.message.includes('PERMISSION_DENIED: Model')) {
+      if (error instanceof ProviderError && error.status && [400, 401, 403].includes(error.status)) {
         break;
       }
       if (!options.json || error instanceof ProviderError) {
@@ -382,47 +266,20 @@ export async function askAI<T = string>(prompt: string, options: AIOptions<T> = 
   throw new Error('AI request could not be completed. Please check your Gemini API key and internet connection.');
 }
 
-// Test Gemini provider with comprehensive multi-model resilience
-export async function testGeminiConnection(customKey?: string): Promise<{ success: boolean; message: string; model?: string }> {
+// Test Gemini provider with a simple prompt
+export async function testGeminiConnection(customKey?: string): Promise<{ success: boolean; message: string }> {
   const key = customKey?.trim() || (await getApiKey());
   if (!key) return { success: false, message: 'No Gemini API key provided.' };
 
   try {
-    let modelToTest = await discoverGeminiModel(key, true);
-    let replyText = '';
-    let successModel = '';
-
-    const testPrompt = 'Hello! Please reply with exactly: "StudyHub Gemini is connected."';
-    const testOptions = { system: 'Be extremely concise.', timeoutMs: 12000, fast: true, maxTokens: 40 };
-
-    try {
-      replyText = await executeGeminiRequest(modelToTest, testPrompt, key, testOptions);
-      successModel = modelToTest;
-    } catch {
-      // Primary model failed or restricted; cascade through candidates
-      for (const cand of GEMINI_CANDIDATES) {
-        if (cand !== modelToTest) {
-          try {
-            replyText = await executeGeminiRequest(cand, testPrompt, key, testOptions);
-            successModel = cand;
-            break;
-          } catch {
-            // try next candidate
-          }
-        }
-      }
-    }
-
-    if (successModel && replyText) {
-      await setCachedModel(successModel);
-      return {
-        success: true,
-        message: `${replyText}\n(Model: ${successModel})`,
-        model: successModel,
-      };
-    }
-
-    throw new Error('None of the supported Gemini models responded with this key. Please verify your API key at ai.google.dev.');
+    const model = await discoverGeminiModel(key);
+    const text = await executeGeminiRequest(
+      model,
+      'Hello! Please reply with exactly: "StudyHub Gemini is connected."',
+      key,
+      { system: 'Be extremely concise.', timeoutMs: 15000 }
+    );
+    return { success: true, message: `${text} (Model: ${model})` };
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Connection failed';
     return { success: false, message: msg };
