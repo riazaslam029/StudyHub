@@ -14,7 +14,20 @@
 **An intelligent, offline-capable academic operating system designed for university and college students.**  
 *Combines local SQLite persistence with Google Gemini AI for smart schedule parsing, voice task logging, and grounded exam preparation.*
 
-[📥 Download Pitch-Ready APK](https://expo.dev/artifacts/eas/sWsaU_7OTsfVWXYKIt3fHG9fvYe2axRU3YJI3_-3msM.apk) • [Features](#-core-features) • [Gemini Workflows](#-google-gemini-ai-features) • [Local vs. Cloud](#-local-vs-cloud-data-architecture) • [Security](#-api-key-setup--security) • [Tech Stack](#-technology-stack) • [Building APK](#-building-and-installation)
+[📥 Download Pitch-Ready APK](https://expo.dev/artifacts/eas/sWsaU_7OTsfVWXYKIt3fHG9fvYe2axRU3YJI3_-3msM.apk) • [Screenshots](#-app-screenshots) • [Features](#-core-features) • [Gemini Workflows](#-google-gemini-ai-features) • [Local vs. Cloud](#-local-vs-cloud-data-architecture) • [Security](#-api-key-setup--security) • [Tech Stack](#-technology-stack) • [Building APK](#-building-and-installation)
+
+</div>
+
+---
+
+## 📱 App Screenshots
+
+<div align="center">
+
+| Dashboard & Timeline | Tasks & Voice AI | AI Workspace (Gemini) | Academic Hub | Settings & Model Engine |
+| :---: | :---: | :---: | :---: | :---: |
+| <img src="assets/screenshots/dashboard.png" width="180" alt="StudyHub Dashboard" /> | <img src="assets/screenshots/tasks.png" width="180" alt="Tasks & Voice AI" /> | <img src="assets/screenshots/ai_workspace.png" width="180" alt="AI Workspace" /> | <img src="assets/screenshots/progress.png" width="180" alt="Academic Progress Hub" /> | <img src="assets/screenshots/settings.png" width="180" alt="Settings & Model Engine" /> |
+| **Next Class & Schedule** | **Voice Task & Priorities** | **Grounded Q&A Study Help** | **GPA, Exams & Attendance** | **Google Gemini Engine** |
 
 </div>
 
