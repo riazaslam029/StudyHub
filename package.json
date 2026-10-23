@@ -6,7 +6,8 @@
     "start": "expo start --dev-client",
     "android": "expo run:android",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:gemini": "node scripts/test-gemini-compatibility.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",

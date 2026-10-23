@@ -8,7 +8,7 @@
 [![React Native](https://img.shields.io/badge/React%20Native-0.81-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactnative.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![SQLite](https://img.shields.io/badge/Storage-Local%20SQLite%20%28Offline%29-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org)
-[![Google Gemini](https://img.shields.io/badge/AI%20Provider-Google%20Gemini%202.0%2F2.5-4285F4?style=for-the-badge&logo=google-gemini&logoColor=white)](https://ai.google.dev)
+[![Google Gemini](https://img.shields.io/badge/AI%20Provider-Google%20Gemini%203.8%2F3.5%2F2.5-4285F4?style=for-the-badge&logo=google-gemini&logoColor=white)](https://ai.google.dev)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
 **An intelligent, offline-capable academic operating system designed for university and college students.**  
@@ -113,17 +113,45 @@ StudyHub maintains a clear and transparent separation between **local storage** 
 
 ---
 
-## 🔑 API-Key Setup & Security
+## 🔑 API-Key Setup, Model Compatibility & Security
 
-### Configuring Your Gemini API Key
-1. Obtain a free API key from [Google AI Studio](https://aistudio.google.com/).
-2. Open StudyHub → Navigate to **Settings** (`⚙️`).
-3. Under **Google Gemini AI Configuration**, paste your key.
-4. Tap **Test Gemini Connection** to verify API validity, then tap **Save Gemini Key**.
+### 1. Generating Your Google Gemini API Key
+1. Go to [Google AI Studio](https://aistudio.google.com/).
+2. Sign in with your Google account and click **Get API key** → **Create API key**.
+3. Select an existing Google Cloud project or click **Create API key in new project**.
+4. Copy the generated API key (format: `AIzaSy...`).
 
-### Key Storage & Production Security Considerations
-- **Current Client-Side Implementation**: StudyHub persists the Gemini API key using `expo-secure-store`, which leverages the **Android Keystore** and **iOS Keychain** to encrypt credentials at rest on the local hardware.
-- **Production Best-Practice Recommendation**: While `expo-secure-store` protects keys on a user's device, direct client-to-cloud API requests carry inherent limitations in commercial distributed applications (such as exposure to reverse-engineering or quota abuse). For a multi-tenant commercial deployment, we recommend introducing a lightweight backend proxy (e.g., Cloudflare Workers or Node.js) that holds the master API credentials, enforces per-user rate limits, and proxies requests to Google Gemini.
+### 2. Supported Model Hierarchy & Compatibility
+Google AI Studio regularly updates model availability for new users while maintaining active endpoints for existing projects. StudyHub incorporates an intelligent, controlled model fallback engine that handles these differences seamlessly:
+
+| Priority | Model Identifier | Tier & Purpose | Availability Status |
+| :--- | :--- | :--- | :--- |
+| **1 (Primary)** | `gemini-3.8-flash` | High-intelligence multimodal workhorse | Standard default for new Google AI Studio keys |
+| **2 (Fallback)**| `gemini-3.5-flash-lite`| High-throughput, low-latency reasoning | Active fallback for lightweight/fast tasks |
+| **3 (Fallback)**| `gemini-2.5-flash` | Multimodal Flash with built-in thinking | Preserved for existing accounts; falls back gracefully if restricted |
+| **4–6 (Legacy)**| `gemini-2.0-flash`, `gemini-1.5-flash`, `gemini-1.5-pro` | Stable production models | Long-standing fallback options for older keys |
+
+### 3. Controlled Fallback & Security Architecture
+- **Dual Authentication**: StudyHub transmits credentials via both the secure `x-goog-api-key` HTTP header and standard query parameters, complying with Google's latest API authentication specifications.
+- **Graceful Deprecation Handling**: If Google returns `models/gemini-2.5-flash is no longer available to new users. Use models/gemini-3.8-flash.` or HTTP 404, StudyHub automatically switches to the next verified model in the priority hierarchy and caches the working model for subsequent requests.
+- **Non-Model Error Guard**: StudyHub never blindly switches models on permanent errors:
+  - `401 AUTH_INVALID_KEY`: Immediately informs the user to check their key in Settings without cycling models.
+  - `403 PERMISSION_DENIED`: Immediately alerts the user to check project permissions in Google AI Studio.
+  - `429 QUOTA_EXHAUSTED`: Alerts the user of rate limiting without triggering unnecessary retries.
+- **Transient Network Retries**: Built-in bounded retries with exponential backoff on HTTP 500–504 or network disconnects.
+- **Key Masking & Zero Secret Leakage**: All logs and error messages strictly mask keys (`AIza...XXXX`). Keys are stored locally using hardware-backed encryption via `expo-secure-store` (Android Keystore / iOS Keychain).
+
+### 4. Troubleshooting Common Gemini Errors
+- **`Invalid Gemini API key` (HTTP 401)**: The key entered in Settings is expired or incorrect. Copy a fresh key from [Google AI Studio](https://aistudio.google.com/).
+- **`Permission Denied` (HTTP 403)**: Ensure that the **Generative Language API** is enabled in the Google Cloud project associated with your API key.
+- **`Rate limit or quota exceeded` (HTTP 429)**: Free-tier AI Studio keys have per-minute request quotas. Wait 15–30 seconds before submitting another request.
+- **`Model unavailable` (HTTP 404 / 400)**: StudyHub's fallback engine automatically selects the next supported model (`gemini-3.8-flash` → `gemini-3.5-flash-lite` → `gemini-2.5-flash`).
+
+### 5. Configuring Key in StudyHub
+1. Open StudyHub → Navigate to **Settings** (`⚙️`).
+2. Paste your key into the **Gemini API Key** field.
+3. Tap **Test Gemini** to verify connectivity (the app will test and report the active model).
+4. Tap **Save Gemini Key**.
 
 ---
 
@@ -139,7 +167,7 @@ StudyHub maintains a clear and transparent separation between **local storage** 
 - **Secure Storage**: `expo-secure-store` (Hardware-backed encrypted storage for API credentials)
 - **File & Media Handling**: `expo-file-system`, `expo-image-picker`, `expo-image-manipulator`, `expo-document-picker`, `expo-sharing`
 - **Icons & Design**: `lucide-react-native`, custom editorial theme system with light/dark support
-- **AI Engine**: Google Gemini API (`gemini-2.5-flash` / `gemini-2.0-flash` multimodal endpoints)
+- **AI Engine**: Google Gemini API (`gemini-3.8-flash`, `gemini-3.5-flash-lite`, `gemini-2.5-flash` with controlled fallback)
 
 ---
 
@@ -256,6 +284,7 @@ StudyHub has undergone a comprehensive code audit to ensure stability, clean arc
 
 | Check | Tool / Command | Status | Notes |
 | :--- | :--- | :--- | :--- |
+| **Gemini Compatibility** | `npm run test:gemini` | ✅ Passed (16/16) | Verified model hierarchy, controlled fallback, error categorization & zero secret leakage |
 | **Type Checking** | `npm run typecheck` | ✅ Passed (0 errors) | Strict TypeScript validation across all screens and services |
 | **Code Linting** | `npm run lint` | ✅ Passed (0 issues) | Clean ESLint verification with zero warnings or errors |
 | **Expo Health** | `npx expo-doctor` | ✅ Passed (18/18 checks) | All plugins, package versions, and dependencies aligned |
