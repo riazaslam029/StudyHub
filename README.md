@@ -255,7 +255,7 @@ StudyHub/
 ### 📥 Direct APK Download (Pitch Ready)
 You can directly download and install the pitch-ready standalone APK package:
 - **Direct APK Download**: [Download StudyHub APK](https://expo.dev/artifacts/eas/sWsaU_7OTsfVWXYKIt3fHG9fvYe2axRU3YJI3_-3msM.apk)
-- **EAS Build Dashboard**: [View Verified Build on Expo EAS](https://expo.dev/accounts/riaz7/projects/studyhub/builds/5a9ea99f-88a4-4943-ad54-f466e1f3714e)
+- **EAS Build Dashboard**: [View Verified Build on Expo EAS](https://expo.dev/accounts/riaz7/projects/studyhub/builds/cea5d697-3d6e-4a59-bdef-cc5207b5115a)
 
 ### 🔨 Building Standalone Android APK with EAS
 StudyHub is preconfigured with an EAS build profile for creating standalone `.apk` files without needing Android Studio installed locally:
